@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { nanoid } from 'nanoid';
+import { generateAutoPatch } from './utils/patch-generator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -240,6 +241,24 @@ const server = http.createServer((req, res) => {
     if (pathname === '/api/scans/history' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify(scanHistory.slice(0, 20)));
+    }
+
+    // API: AI Auto-Patch Generator
+    if (pathname === '/api/patch' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const finding = JSON.parse(body);
+                const patch = generateAutoPatch(finding);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(patch));
+            } catch (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err.message }));
+            }
+        });
+        return;
     }
 
     res.writeHead(404, { 'Content-Type': 'text/plain' });

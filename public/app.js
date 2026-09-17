@@ -170,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        findings.forEach(f => {
+        findings.forEach((f, idx) => {
             const tr = document.createElement('tr');
             const sevClass = 'pill-' + (f.severity || 'low');
             const remediationText = f.remediation || f.description || 'Review application code and enforce strict input validation.';
@@ -179,11 +179,114 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><strong>${escapeHtml(f.title)}</strong></td>
                 <td><code>${escapeHtml(f.agent || 'VIBE-SHIELD')}</code></td>
                 <td>${escapeHtml(f.affected_surface || 'N/A')}</td>
-                <td>${escapeHtml(f.owasp || 'N/A')}</td>
-                <td style="max-width: 320px; font-size: 12px; color: var(--text-secondary);">${escapeHtml(remediationText)}</td>
+                <td>${escapeHtml(f.owasp?.id || f.owasp || 'A01:2021')}</td>
+                <td style="max-width: 380px;">
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">${escapeHtml(remediationText)}</div>
+                    <button type="button" class="btn-patch-action auto-patch-btn" data-finding-index="${idx}">
+                        ⚡ Auto-Patch Code
+                    </button>
+                </td>
             `;
+
+            const patchBtn = tr.querySelector('.auto-patch-btn');
+            patchBtn.onclick = () => openAutoPatchModal(f);
             tbody.appendChild(tr);
         });
+    }
+
+    // ═══════════════════════════════════════════════
+    // AI Auto-Patch Modal Logic
+    // ═══════════════════════════════════════════════
+
+    const patchModal = document.getElementById('patch-modal');
+    const closePatchModalBtn = document.getElementById('close-patch-modal-btn');
+    const patchFindingTitle = document.getElementById('patch-finding-title');
+    const patchRecText = document.getElementById('patch-recommendation-text');
+    const frameworkTabsContainer = document.getElementById('framework-tabs');
+    const patchTargetFile = document.getElementById('patch-target-file');
+    const patchCodeContent = document.getElementById('patch-code-content');
+    const copyPatchBtn = document.getElementById('copy-patch-btn');
+    const copyBtnText = document.getElementById('copy-btn-text');
+
+    if (closePatchModalBtn) {
+        closePatchModalBtn.onclick = () => patchModal.classList.add('hidden');
+    }
+    if (patchModal) {
+        patchModal.addEventListener('click', (e) => {
+            if (e.target === patchModal) patchModal.classList.add('hidden');
+        });
+    }
+
+    async function openAutoPatchModal(finding) {
+        if (!patchModal) return;
+        patchModal.classList.remove('hidden');
+        patchFindingTitle.textContent = finding.title || 'Security Remediation Patch';
+        patchRecText.textContent = 'Analyzing vulnerability signature and synthesizing idiomatic framework guardrails...';
+        patchTargetFile.textContent = '📁 Loading...';
+        patchCodeContent.textContent = '// Synthesizing AI Auto-Patch...';
+        frameworkTabsContainer.innerHTML = '';
+
+        try {
+            const res = await fetch('/api/patch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(finding)
+            });
+
+            const patchData = await res.json();
+            renderAutoPatch(patchData);
+        } catch (err) {
+            patchRecText.textContent = 'Error fetching patch: ' + err.message;
+        }
+    }
+
+    function renderAutoPatch(patchData) {
+        patchRecText.textContent = patchData.recommendation || 'Apply the following hardened code configuration to mitigate the vulnerability.';
+        frameworkTabsContainer.innerHTML = '';
+
+        const frameworks = patchData.frameworks || {};
+        const keys = Object.keys(frameworks);
+        if (keys.length === 0) return;
+
+        keys.forEach((fwKey, idx) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'tab-btn' + (idx === 0 ? ' active' : '');
+            btn.textContent = fwKey;
+            btn.onclick = () => {
+                document.querySelectorAll('.framework-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                displayFrameworkCode(frameworks[fwKey]);
+            };
+            frameworkTabsContainer.appendChild(btn);
+        });
+
+        // Display first framework by default
+        displayFrameworkCode(frameworks[keys[0]]);
+    }
+
+    function displayFrameworkCode(fwData) {
+        patchTargetFile.textContent = '📁 ' + (fwData.file || 'Configuration');
+        patchCodeContent.textContent = fwData.code || '// No code available';
+    }
+
+    if (copyPatchBtn) {
+        copyPatchBtn.onclick = async () => {
+            const textToCopy = patchCodeContent.textContent;
+            try {
+                await navigator.clipboard.writeText(textToCopy);
+                copyBtnText.textContent = 'Copied! ✓';
+                copyPatchBtn.style.borderColor = 'var(--accent-green)';
+                copyPatchBtn.style.color = 'var(--accent-green)';
+                setTimeout(() => {
+                    copyBtnText.textContent = 'Copy Patch';
+                    copyPatchBtn.style.borderColor = '';
+                    copyPatchBtn.style.color = '';
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy text:', err);
+            }
+        };
     }
 
     // ═══════════════════════════════════════════════

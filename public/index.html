@@ -289,6 +289,43 @@
         </footer>
     </div>
 
+    <!-- AI One-Click Auto-Patch Remediation Modal -->
+    <div id="patch-modal" class="modal-backdrop hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <span class="badge badge-patch">⚡ AI AUTO-PATCH REMEDIATION</span>
+                    <h3 id="patch-finding-title">Fixing Vulnerability</h3>
+                </div>
+                <button type="button" id="close-patch-modal-btn" class="close-btn">×</button>
+            </div>
+
+            <div class="modal-body">
+                <div class="patch-rec-box">
+                    <label>ROOT CAUSE & DEFENSIVE STRATEGY</label>
+                    <p id="patch-recommendation-text">Applying defense-in-depth sanitization and header hardening...</p>
+                </div>
+
+                <div class="framework-tabs-wrap">
+                    <label>SELECT TARGET FRAMEWORK / RUNTIME:</label>
+                    <div id="framework-tabs" class="framework-tabs">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+
+                <div class="code-editor-box">
+                    <div class="editor-top-bar">
+                        <span id="patch-target-file" class="file-path">📁 middleware.ts</span>
+                        <button type="button" id="copy-patch-btn" class="btn btn-secondary copy-btn">
+                            <span class="copy-icon">📋</span> <span id="copy-btn-text">Copy Patch</span>
+                        </button>
+                    </div>
+                    <pre><code id="patch-code-content" class="code-content">// Generating patch...</code></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/app.js"></script>
 </body>
 </html>
