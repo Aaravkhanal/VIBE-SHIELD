@@ -115,6 +115,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             updateAgentState('api', status.agents['VIBE-SHIELD-API']);
                         }
 
+                        // Feed logs into live terminal
+                        if (status.terminalLogs && window.liveScanTerminal) {
+                            window.liveScanTerminal.setLogs(status.terminalLogs);
+                        }
+
                         if (status.completed) {
                             clearTimeout(fallbackTimeout);
                             evtSource.close();
@@ -174,6 +179,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateAgentState('ai', status.agents['VIBE-SHIELD-AI']);
                     updateAgentState('logic', status.agents['VIBE-SHIELD-LOGIC']);
                     updateAgentState('api', status.agents['VIBE-SHIELD-API']);
+                }
+
+                if (status.terminalLogs && window.liveScanTerminal) {
+                    window.liveScanTerminal.setLogs(status.terminalLogs);
                 }
 
                 if (status.completed) {
@@ -443,6 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
         resultsSection.classList.remove('hidden');
         const report = status.report || {};
         const summary = report.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
+        const scanId = status.scanId || currentScanId;
 
         document.getElementById('count-critical').textContent = summary.critical;
         document.getElementById('count-high').textContent = summary.high;
@@ -455,6 +465,25 @@ document.addEventListener('DOMContentLoaded', () => {
         activeReportPath = status.reportHtmlUrl;
         if (activeReportPath) {
             viewReportBtn.onclick = () => window.open(activeReportPath, '_blank');
+        }
+
+        // Set up results terminal logs
+        const resultsScanIdSpan = document.getElementById('results-terminal-scan-id');
+        if (resultsScanIdSpan) {
+            resultsScanIdSpan.textContent = scanId ? `SCAN #${scanId}` : 'SCAN LOGS';
+        }
+
+        if (status.terminalLogs && window.resultsLogsTerminal) {
+            window.resultsLogsTerminal.setLogs(status.terminalLogs);
+        } else if (scanId && window.resultsLogsTerminal) {
+            fetch(`/api/scan/${scanId}/logs`)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.logs && d.logs.length > 0) {
+                        window.resultsLogsTerminal.setLogs(d.logs);
+                    }
+                })
+                .catch(() => {});
         }
 
         // Render Vibe Security Score & Shield Badge
@@ -1115,6 +1144,158 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ═══════════════════════════════════════════════
+    // Terminal Console Controller Engine
+    // ═══════════════════════════════════════════════
+
+    class TerminalConsole {
+        constructor({ containerId, outputId, filterGroupId, autoScrollId, copyBtnId, clearBtnId }) {
+            this.container = document.getElementById(containerId);
+            this.output = document.getElementById(outputId);
+            this.filterGroup = document.getElementById(filterGroupId);
+            this.autoScrollToggle = autoScrollId ? document.getElementById(autoScrollId) : null;
+            this.copyBtn = copyBtnId ? document.getElementById(copyBtnId) : null;
+            this.clearBtn = clearBtnId ? document.getElementById(clearBtnId) : null;
+
+            this.logs = [];
+            this.currentFilter = 'all';
+            this.autoScroll = true;
+
+            this.initEvents();
+        }
+
+        initEvents() {
+            if (this.filterGroup) {
+                this.filterGroup.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.terminal-filter-btn');
+                    if (!btn) return;
+                    this.filterGroup.querySelectorAll('.terminal-filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    this.currentFilter = btn.dataset.filter || 'all';
+                    this.render();
+                });
+            }
+
+            if (this.autoScrollToggle) {
+                this.autoScrollToggle.addEventListener('change', (e) => {
+                    this.autoScroll = e.target.checked;
+                });
+            }
+
+            if (this.copyBtn) {
+                this.copyBtn.addEventListener('click', async () => {
+                    if (this.logs.length === 0) {
+                        showToast('No logs available to copy', 'info');
+                        return;
+                    }
+                    const text = this.logs.map(l => `[${l.time}] [${l.agent}] ${l.text}`).join('\n');
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        showToast('📋 Terminal logs copied to clipboard!', 'success');
+                    } catch(err) {
+                        showToast('Failed to copy logs', 'error');
+                    }
+                });
+            }
+
+            if (this.clearBtn) {
+                this.clearBtn.addEventListener('click', () => {
+                    this.logs = [];
+                    this.render();
+                });
+            }
+        }
+
+        setLogs(logs) {
+            this.logs = Array.isArray(logs) ? logs : [];
+            this.render();
+        }
+
+        appendLog(logEntry) {
+            this.logs.push(logEntry);
+            if (this.matchesFilter(logEntry) && this.output) {
+                const lineEl = this.createLineElement(logEntry);
+                this.output.appendChild(lineEl);
+                if (this.autoScroll) {
+                    this.output.scrollTop = this.output.scrollHeight;
+                }
+            }
+        }
+
+        matchesFilter(log) {
+            if (this.currentFilter === 'all') return true;
+            return (log.agent || '').toUpperCase() === this.currentFilter.toUpperCase();
+        }
+
+        createLineElement(log) {
+            const div = document.createElement('div');
+            const agent = log.agent || 'SYSTEM';
+            const level = log.level || 'info';
+            div.className = `terminal-line agent-${agent} level-${level}`;
+            div.innerHTML = `<span class="t-stamp">[${log.time || '00:00:00'}]</span> <span class="t-agent">[${agent}]</span> <span class="t-msg">${escapeHtml(log.text || '')}</span>`;
+            return div;
+        }
+
+        render() {
+            if (!this.output) return;
+            this.output.innerHTML = '';
+            const filtered = this.logs.filter(l => this.matchesFilter(l));
+            if (filtered.length === 0) {
+                this.output.innerHTML = '<div class="terminal-line system"><span class="t-stamp">[--:--:--]</span> <span class="t-msg" style="color: var(--text-muted);">No log entries match the selected filter.</span></div>';
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            filtered.forEach(log => {
+                fragment.appendChild(this.createLineElement(log));
+            });
+            this.output.appendChild(fragment);
+
+            if (this.autoScroll) {
+                this.output.scrollTop = this.output.scrollHeight;
+            }
+        }
+    }
+
+    // Initialize Terminals
+    window.liveScanTerminal = new TerminalConsole({
+        containerId: 'terminal-feed-container',
+        outputId: 'terminal-output',
+        filterGroupId: 'terminal-filter-group',
+        autoScrollId: 'terminal-autoscroll',
+        copyBtnId: 'terminal-copy-btn',
+        clearBtnId: 'terminal-clear-btn'
+    });
+
+    window.resultsLogsTerminal = new TerminalConsole({
+        containerId: 'results-terminal-drawer',
+        outputId: 'results-terminal-output',
+        filterGroupId: 'results-terminal-filter-group',
+        copyBtnId: 'results-terminal-copy-btn'
+    });
+
+    // Toggle Results Terminal Drawer
+    const toggleResultsTerminalBtn = document.getElementById('toggle-results-terminal-btn');
+    const resultsTerminalDrawer = document.getElementById('results-terminal-drawer');
+    const resultsTerminalCloseBtn = document.getElementById('results-terminal-close-btn');
+
+    if (toggleResultsTerminalBtn && resultsTerminalDrawer) {
+        toggleResultsTerminalBtn.onclick = () => {
+            const isHidden = resultsTerminalDrawer.classList.toggle('hidden');
+            toggleResultsTerminalBtn.textContent = isHidden ? '📺 View Execution Logs' : '✕ Hide Execution Logs';
+            if (!isHidden) {
+                resultsTerminalDrawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        };
+    }
+
+    if (resultsTerminalCloseBtn && resultsTerminalDrawer && toggleResultsTerminalBtn) {
+        resultsTerminalCloseBtn.onclick = () => {
+            resultsTerminalDrawer.classList.add('hidden');
+            toggleResultsTerminalBtn.textContent = '📺 View Execution Logs';
+        };
+    }
+
     // Initialize Threat Graph Canvas & Inspector
     const graphCanvas = document.getElementById('threat-graph-canvas');
     const graphInspector = document.getElementById('threat-node-inspector');
@@ -1161,6 +1342,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (!res.ok) return;
                         const reportData = await res.json();
                         displayResults({
+                            scanId: scan.scanId,
                             url: scan.url,
                             duration: scan.duration,
                             report: reportData,
@@ -1185,6 +1367,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (res.ok) {
                         const reportData = await res.json();
                         displayResults({
+                            scanId: firstScan.scanId,
                             url: firstScan.url,
                             duration: firstScan.duration,
                             report: reportData,

@@ -166,6 +166,14 @@ const server = http.createServer((req, res) => {
                         'VIBE-SHIELD-LOGIC': { status: 'pending', message: 'Waiting for crawl...' },
                         'VIBE-SHIELD-API': { status: 'pending', message: 'Waiting for crawl...' },
                     },
+                    terminalLogs: [
+                        {
+                            time: new Date().toISOString().substring(11, 19),
+                            agent: 'SYSTEM',
+                            level: 'info',
+                            text: `[VIBE-SHIELD] Autonomous scan initiated for ${targetUrl} (modules: ${modules.join(', ')})`
+                        }
+                    ],
                     report: null,
                     reportHtmlUrl: null
                 };
@@ -215,10 +223,14 @@ const server = http.createServer((req, res) => {
                                 const reportContent = JSON.parse(fs.readFileSync(reportJsonPath, 'utf-8'));
                                 scanData.report = reportContent;
                                 scanData.reportHtmlUrl = `/vibe-shield-reports/${latestDir}/report.html`;
+
+                                // Persist terminal logs alongside report for future inspection
+                                const terminalLogPath = path.join(REPORTS_DIR, latestDir, 'terminal.json');
+                                fs.writeFileSync(terminalLogPath, JSON.stringify(scanData.terminalLogs || [], null, 2));
                             }
                         }
                     } catch (err) {
-                        console.error('Error fetching report:', err);
+                        console.error('Error fetching report or saving logs:', err);
                     }
 
                     // Save to history (cap at 50 entries to prevent unbounded memory growth)
@@ -283,6 +295,31 @@ const server = http.createServer((req, res) => {
             }
         });
         return;
+    }
+
+    // API: Get Terminal Logs for Scan
+    if (pathname.startsWith('/api/scan/') && pathname.endsWith('/logs') && req.method === 'GET') {
+        const scanId = pathname.replace('/api/scan/', '').replace('/logs', '');
+        const scanData = activeScans.get(scanId);
+
+        if (scanData && scanData.terminalLogs) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ scanId, logs: scanData.terminalLogs }));
+        }
+
+        // Try reading persisted terminal.json from report directory
+        const reportPath = path.join(REPORTS_DIR, scanId, 'terminal.json');
+        if (fs.existsSync(reportPath)) {
+            try {
+                const logs = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ scanId, logs }));
+            } catch (e) {}
+        }
+
+        // Return empty logs if not found
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ scanId, logs: [] }));
     }
 
     // API: Get Scan Status
@@ -351,6 +388,10 @@ const server = http.createServer((req, res) => {
     res.end('404 Not Found');
 });
 
+function stripAnsi(str) {
+    return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+}
+
 function parseScanLogs(scanData, text) {
     for (const agentName of Object.keys(scanData.agents)) {
         if (text.includes(`[${agentName}] Complete`) || text.includes(`✔ [${agentName}]`)) {
@@ -362,6 +403,40 @@ function parseScanLogs(scanData, text) {
         } else if (text.includes(`[${agentName}] Error`) || text.includes(`✘ [${agentName}]`)) {
             scanData.agents[agentName].status = 'error';
             scanData.agents[agentName].message = 'Error encountered';
+        }
+    }
+
+    // Parse structured terminal log entries
+    if (scanData.terminalLogs) {
+        const clean = stripAnsi(text);
+        const lines = clean.split('\n');
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            let agentTag = 'SYSTEM';
+            if (trimmed.includes('VIBE-SHIELD-CRAWL')) agentTag = 'CRAWL';
+            else if (trimmed.includes('VIBE-SHIELD-SEC')) agentTag = 'SEC';
+            else if (trimmed.includes('VIBE-SHIELD-AI')) agentTag = 'AI';
+            else if (trimmed.includes('VIBE-SHIELD-QA')) agentTag = 'QA';
+            else if (trimmed.includes('VIBE-SHIELD-LOGIC')) agentTag = 'LOGIC';
+            else if (trimmed.includes('VIBE-SHIELD-API')) agentTag = 'API';
+
+            let level = 'info';
+            if (trimmed.includes('Error') || trimmed.includes('✘') || trimmed.includes('CRITICAL')) level = 'error';
+            else if (trimmed.includes('WARN') || trimmed.includes('HIGH')) level = 'warn';
+            else if (trimmed.includes('✔') || trimmed.includes('Complete') || trimmed.includes('PASSED')) level = 'success';
+
+            scanData.terminalLogs.push({
+                time: new Date().toISOString().substring(11, 19),
+                agent: agentTag,
+                level,
+                text: trimmed
+            });
+
+            if (scanData.terminalLogs.length > 1500) {
+                scanData.terminalLogs.shift();
+            }
         }
     }
 }

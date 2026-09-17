@@ -167,6 +167,39 @@
                         <div class="agent-log">Waiting for surface inventory...</div>
                     </div>
                 </div>
+
+                <!-- Live Multi-Agent Scan Terminal Console -->
+                <div class="terminal-container" id="terminal-feed-container">
+                    <div class="terminal-header">
+                        <div class="terminal-controls">
+                            <span class="terminal-dot red"></span>
+                            <span class="terminal-dot yellow"></span>
+                            <span class="terminal-dot green"></span>
+                            <span class="terminal-title">⚡ VIBE-SHIELD LIVE SCAN CONSOLE (STDOUT / STDERR)</span>
+                            <span class="terminal-live-badge"><span class="terminal-pulse"></span> LIVE</span>
+                        </div>
+                        <div class="terminal-actions">
+                            <div class="terminal-filters" id="terminal-filter-group">
+                                <button type="button" class="terminal-filter-btn active" data-filter="all">ALL</button>
+                                <button type="button" class="terminal-filter-btn" data-filter="CRAWL">CRAWL</button>
+                                <button type="button" class="terminal-filter-btn" data-filter="SEC">SECURITY</button>
+                                <button type="button" class="terminal-filter-btn" data-filter="AI">AI</button>
+                                <button type="button" class="terminal-filter-btn" data-filter="QA">QA</button>
+                                <button type="button" class="terminal-filter-btn" data-filter="LOGIC">LOGIC</button>
+                                <button type="button" class="terminal-filter-btn" data-filter="API">API</button>
+                            </div>
+                            <label class="terminal-toggle" title="Auto-scroll as new output arrives">
+                                <input type="checkbox" id="terminal-autoscroll" checked>
+                                <span>Auto-scroll</span>
+                            </label>
+                            <button type="button" id="terminal-copy-btn" class="terminal-btn" title="Copy Logs to Clipboard">📋 Copy</button>
+                            <button type="button" id="terminal-clear-btn" class="terminal-btn" title="Clear View">🗑️ Clear</button>
+                        </div>
+                    </div>
+                    <div class="terminal-body" id="terminal-output">
+                        <div class="terminal-line system"><span class="t-stamp">[00:00:00]</span> <span class="t-agent">[VIBE-SHIELD]</span> <span class="t-msg">Autonomous intelligence engine initialized. Awaiting dispatch...</span></div>
+                    </div>
+                </div>
             </section>
 
             <!-- Results & Findings Section -->
@@ -178,7 +211,8 @@
                             <p class="subtitle" id="results-meta-text">Completed scan details</p>
                         </div>
                         <div class="action-buttons">
-                            <button id="view-report-html-btn" class="btn btn-secondary">Open Full HTML Report ↗</button>
+                            <button type="button" id="toggle-results-terminal-btn" class="btn btn-secondary">📺 View Execution Logs</button>
+                            <button type="button" id="view-report-html-btn" class="btn btn-secondary">Open Full HTML Report ↗</button>
                         </div>
                     </div>
 
@@ -340,6 +374,34 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- Results Execution Logs Terminal Drawer -->
+                    <div id="results-terminal-drawer" class="terminal-container hidden" style="margin-top: 24px;">
+                        <div class="terminal-header">
+                            <div class="terminal-controls">
+                                <span class="terminal-dot red"></span>
+                                <span class="terminal-dot yellow"></span>
+                                <span class="terminal-dot green"></span>
+                                <span class="terminal-title">📜 EXECUTION LOGS AUDIT (<span id="results-terminal-scan-id">SCAN LOGS</span>)</span>
+                            </div>
+                            <div class="terminal-actions">
+                                <div class="terminal-filters" id="results-terminal-filter-group">
+                                    <button type="button" class="terminal-filter-btn active" data-filter="all">ALL</button>
+                                    <button type="button" class="terminal-filter-btn" data-filter="CRAWL">CRAWL</button>
+                                    <button type="button" class="terminal-filter-btn" data-filter="SEC">SECURITY</button>
+                                    <button type="button" class="terminal-filter-btn" data-filter="AI">AI</button>
+                                    <button type="button" class="terminal-filter-btn" data-filter="QA">QA</button>
+                                    <button type="button" class="terminal-filter-btn" data-filter="LOGIC">LOGIC</button>
+                                    <button type="button" class="terminal-filter-btn" data-filter="API">API</button>
+                                </div>
+                                <button type="button" id="results-terminal-copy-btn" class="terminal-btn" title="Copy Logs">📋 Copy</button>
+                                <button type="button" id="results-terminal-close-btn" class="terminal-btn" title="Close Logs">✕ Close</button>
+                            </div>
+                        </div>
+                        <div class="terminal-body" id="results-terminal-output">
+                            <div class="terminal-line system"><span class="t-stamp">[00:00:00]</span> <span class="t-agent">[VIBE-SHIELD]</span> <span class="t-msg">Historical scan execution stream ready.</span></div>
+                        </div>
                     </div>
                 </div>
             </section>
