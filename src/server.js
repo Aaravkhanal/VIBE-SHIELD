@@ -205,7 +205,8 @@ const server = http.createServer((req, res) => {
                         console.error('Error fetching report:', err);
                     }
 
-                    // Save to history
+                    // Save to history (cap at 50 entries to prevent unbounded memory growth)
+                    if (scanHistory.length >= 50) scanHistory.pop();
                     scanHistory.unshift({
                         scanId,
                         url: targetUrl,

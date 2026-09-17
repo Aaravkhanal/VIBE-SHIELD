@@ -60,16 +60,28 @@ document.addEventListener('DOMContentLoaded', () => {
             currentScanId = data.scanId;
             pollScanProgress(currentScanId);
         } catch (err) {
-            alert('Scan Error: ' + err.message);
+            showToast('Scan Error: ' + err.message, 'error');
             stopTimer();
             startBtn.disabled = false;
             startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
         }
     });
 
-    // Poll Progress
+    // Poll Progress (max 10 minutes = 600 polls)
     function pollScanProgress(scanId) {
+        let pollCount = 0;
+        const MAX_POLLS = 600;
         const interval = setInterval(async () => {
+            pollCount++;
+            if (pollCount > MAX_POLLS) {
+                clearInterval(interval);
+                stopTimer();
+                startBtn.disabled = false;
+                startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
+                showToast('⚠️ Scan timed out after 10 minutes. Check server logs.', 'error');
+                return;
+            }
+
             try {
                 const res = await fetch(`/api/scan/${scanId}`);
                 if (!res.ok) return;
@@ -94,6 +106,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Error polling status:', e);
             }
         }, 1000);
+    }
+
+    // Toast notification system
+    function showToast(message, type = 'info') {
+        const existing = document.getElementById('vibe-toast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'vibe-toast';
+        toast.style.cssText = `
+            position: fixed; bottom: 28px; right: 28px; z-index: 999;
+            padding: 14px 20px; border-radius: 10px; font-size: 13px; font-weight: 600;
+            display: flex; align-items: center; gap: 10px;
+            backdrop-filter: blur(16px); animation: toastIn 0.3s ease;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+            border: 1px solid ${ type === 'error' ? 'rgba(255,51,102,0.4)' : type === 'success' ? 'rgba(0,255,136,0.4)' : 'rgba(0,229,255,0.4)' };
+            background: ${ type === 'error' ? 'rgba(255,51,102,0.12)' : type === 'success' ? 'rgba(0,255,136,0.12)' : 'rgba(0,229,255,0.12)' };
+            color: ${ type === 'error' ? '#ff3366' : type === 'success' ? '#00ff88' : '#00e5ff' };
+        `;
+        toast.textContent = message;
+
+        // Add keyframe if not present
+        if (!document.getElementById('toast-style')) {
+            const s = document.createElement('style');
+            s.id = 'toast-style';
+            s.textContent = '@keyframes toastIn { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform:translateY(0); } }';
+            document.head.appendChild(s);
+        }
+
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
     }
 
     function updateAgentState(key, agentData) {
@@ -459,7 +502,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 copyPatchBtn.style.color = 'var(--accent-green)';
                 setTimeout(() => {
                     copyBtnText.textContent = 'Copy Patch';
-                    copyPatchBtn.style.bord    // ═══════════════════════════════════════════════
+                    copyPatchBtn.style.borderColor = '';
+                    copyPatchBtn.style.color = '';
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy text:', err);
+            }
+        };
+    }
+
+    // ═══════════════════════════════════════════════
     // Threat Graph Engine (Attack Vector Map)
     // ═══════════════════════════════════════════════
 
@@ -929,10 +981,15 @@ document.addEventListener('DOMContentLoaded', () => {
             scans.forEach(scan => {
                 const item = document.createElement('div');
                 item.className = 'history-item';
+                let hostname = scan.url;
+                try { hostname = new URL(scan.url).hostname; } catch(e) {}
                 item.innerHTML = `
-                    <div style="cursor: pointer;" class="history-info-click">
-                        <div class="history-url">${escapeHtml(scan.url)}</div>
-                        <div class="history-meta">${new Date(scan.timestamp).toLocaleString()} · ${scan.findingsCount} findings · ${scan.duration}s</div>
+                    <div style="cursor: pointer; display:flex; align-items:center; gap:10px;" class="history-info-click">
+                        <img src="https://www.google.com/s2/favicons?domain=${escapeHtml(hostname)}&sz=16" width="16" height="16" style="border-radius:3px; opacity:0.8; flex-shrink:0;" onerror="this.style.display='none'" />
+                        <div>
+                            <div class="history-url">${escapeHtml(scan.url)}</div>
+                            <div class="history-meta">${new Date(scan.timestamp).toLocaleString()} · ${scan.findingsCount} findings · ${scan.duration}s</div>
+                        </div>
                     </div>
                     <div style="display: flex; gap: 8px;">
                         <button class="btn btn-secondary load-scan-btn" style="padding:4px 10px; font-size:11px;">Inspect Details</button>
