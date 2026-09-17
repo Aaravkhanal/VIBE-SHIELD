@@ -44,7 +44,11 @@ export class Crawler {
      * @param {string[]} [seedLinks] - Additional URLs to crawl (e.g., from post-login page)
      */
     async crawl(targetUrl, authState = null, seedLinks = []) {
-        this.baseUrl = new URL(targetUrl);
+        let urlStr = (targetUrl || '').trim();
+        if (urlStr && !/^https?:\/\//i.test(urlStr)) {
+            urlStr = 'https://' + urlStr;
+        }
+        this.baseUrl = new URL(urlStr);
 
         let browser;
         try {

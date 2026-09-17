@@ -37,7 +37,17 @@ program
 // Multi-Agent Scan Runner
 // ═══════════════════════════════════════════════
 
-async function runScan(url, options, modulesToRun) {
+function normalizeTargetUrl(inputUrl) {
+    if (!inputUrl) return inputUrl;
+    let url = inputUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+    }
+    return url;
+}
+
+async function runScan(rawUrl, options, modulesToRun) {
+    const url = normalizeTargetUrl(rawUrl);
     console.log(BANNER);
 
     const config = loadConfig({ ...options, targetUrl: url });
@@ -487,6 +497,16 @@ program
     .option('-v, --verbose', 'Enable verbose logging')
     .action(async (url, options) => {
         await runScan(url, options, ['api']);
+    });
+
+program
+    .command('web')
+    .alias('gui')
+    .description('Launch the VIBE SHIELD interactive Web Application GUI')
+    .option('-p, --port <number>', 'Port to listen on', '3000')
+    .action(async (options) => {
+        process.env.PORT = options.port;
+        await import('./server.js');
     });
 
 program.parse();

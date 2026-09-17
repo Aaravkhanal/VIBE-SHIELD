@@ -18,6 +18,9 @@
     "README.md"
   ],
   "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js",
+    "web": "node src/cli.js web",
     "scan": "node src/cli.js scan",
     "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "node src/cli.js --help"

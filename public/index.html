@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIBE SHIELD — Autonomous Security & Quality Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation -->
+        <header class="header">
+            <div class="brand">
+                <div class="brand-logo">🛡️</div>
+                <div class="brand-text">
+                    <h1>VIBE SHIELD</h1>
+                    <span class="badge version-badge">v1.0.0</span>
+                </div>
+            </div>
+            <div class="header-status">
+                <span class="status-indicator active"></span>
+                <span class="status-text">Multi-Agent System Ready</span>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Hero Scanner Section -->
+            <section class="card scanner-card">
+                <div class="card-header">
+                    <h2>Target Application Scanner</h2>
+                    <p class="subtitle">Autonomous multi-agent QA, Security, AI & API vulnerability scanner for vibe-coded apps</p>
+                </div>
+                
+                <form id="scan-form" class="scan-form">
+                    <div class="input-group">
+                        <div class="url-input-wrapper">
+                            <span class="input-icon">🌐</span>
+                            <input type="text" id="target-url" placeholder="enter app URL (e.g. jubidate-ai.vercel.app or https://your-app.com)" required autocomplete="off" />
+                        </div>
+                        <button type="submit" id="start-scan-btn" class="btn btn-primary">
+                            <span class="btn-text">Start Autonomous Scan</span>
+                            <span class="btn-icon">⚡</span>
+                        </button>
+                    </div>
+
+                    <!-- Scan Configuration Options -->
+                    <div class="config-grid">
+                        <div class="config-group">
+                            <label>Module Selection</label>
+                            <div class="module-chips">
+                                <label class="chip active"><input type="checkbox" name="modules" value="qa" checked /> <span>QA & Functional</span></label>
+                                <label class="chip active"><input type="checkbox" name="modules" value="security" checked /> <span>Security Probing</span></label>
+                                <label class="chip active"><input type="checkbox" name="modules" value="ai" checked /> <span>AI & Prompts</span></label>
+                                <label class="chip active"><input type="checkbox" name="modules" value="logic" checked /> <span>Business Logic</span></label>
+                                <label class="chip active"><input type="checkbox" name="modules" value="api" checked /> <span>API & Auth</span></label>
+                            </div>
+                        </div>
+
+                        <div class="config-group">
+                            <label>Safety Tier</label>
+                            <select id="safety-mode" class="select-input">
+                                <option value="safe-active" selected>Safe-Active (Non-destructive probing)</option>
+                                <option value="passive">Passive (Recon & Static only)</option>
+                                <option value="aggressive">Aggressive (Full state-mutation probing)</option>
+                            </select>
+                        </div>
+
+                        <div class="config-group">
+                            <label>Crawl Limit</label>
+                            <select id="max-pages" class="select-input">
+                                <option value="10">Quick Scan (Max 10 pages)</option>
+                                <option value="25" selected>Standard Scan (Max 25 pages)</option>
+                                <option value="50">Deep Scan (Max 50 pages)</option>
+                            </select>
+                        </div>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Live Scan Progress Grid (Hidden by default) -->
+            <section id="scan-progress-section" class="progress-section hidden">
+                <div class="section-title-bar">
+                    <div class="title-with-spinner">
+                        <div class="spinner"></div>
+                        <h3>Scanning Target: <span id="current-target-display"></span></h3>
+                    </div>
+                    <div id="scan-timer" class="timer">00:00</div>
+                </div>
+
+                <!-- 6 Agent Cards Grid -->
+                <div class="agents-grid">
+                    <div class="agent-card" id="agent-crawl">
+                        <div class="agent-header">
+                            <span class="agent-icon">🕸️</span>
+                            <div class="agent-info">
+                                <h4>VIBE-SHIELD-CRAWL</h4>
+                                <span class="agent-role">App Surface Inventory & Crawler</span>
+                            </div>
+                            <span class="agent-badge badge-pending">Waiting</span>
+                        </div>
+                        <div class="agent-log">Waiting for execution...</div>
+                    </div>
+
+                    <div class="agent-card" id="agent-qa">
+                        <div class="agent-header">
+                            <span class="agent-icon">🧪</span>
+                            <div class="agent-info">
+                                <h4>VIBE-SHIELD-QA</h4>
+                                <span class="agent-role">Quality & Functional Testing</span>
+                            </div>
+                            <span class="agent-badge badge-pending">Waiting</span>
+                        </div>
+                        <div class="agent-log">Waiting for surface inventory...</div>
+                    </div>
+
+                    <div class="agent-card" id="agent-sec">
+                        <div class="agent-header">
+                            <span class="agent-icon">🛡️</span>
+                            <div class="agent-info">
+                                <h4>VIBE-SHIELD-SEC</h4>
+                                <span class="agent-role">Security & Vulnerabilities</span>
+                            </div>
+                            <span class="agent-badge badge-pending">Waiting</span>
+                        </div>
+                        <div class="agent-log">Waiting for surface inventory...</div>
+                    </div>
+
+                    <div class="agent-card" id="agent-ai">
+                        <div class="agent-header">
+                            <span class="agent-icon">🤖</span>
+                            <div class="agent-info">
+                                <h4>VIBE-SHIELD-AI</h4>
+                                <span class="agent-role">Prompt Injection & LLM Abuse</span>
+                            </div>
+                            <span class="agent-badge badge-pending">Waiting</span>
+                        </div>
+                        <div class="agent-log">Waiting for surface inventory...</div>
+                    </div>
+
+                    <div class="agent-card" id="agent-logic">
+                        <div class="agent-header">
+                            <span class="agent-icon">⚖️</span>
+                            <div class="agent-info">
+                                <h4>VIBE-SHIELD-LOGIC</h4>
+                                <span class="agent-role">Business Rule Validation</span>
+                            </div>
+                            <span class="agent-badge badge-pending">Waiting</span>
+                        </div>
+                        <div class="agent-log">Waiting for surface inventory...</div>
+                    </div>
+
+                    <div class="agent-card" id="agent-api">
+                        <div class="agent-header">
+                            <span class="agent-icon">🔌</span>
+                            <div class="agent-info">
+                                <h4>VIBE-SHIELD-API</h4>
+                                <span class="agent-role">API & Auth Flow Auditing</span>
+                            </div>
+                            <span class="agent-badge badge-pending">Waiting</span>
+                        </div>
+                        <div class="agent-log">Waiting for surface inventory...</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results & Findings Section -->
+            <section id="results-section" class="results-section hidden">
+                <div class="card">
+                    <div class="card-header results-header">
+                        <div>
+                            <h2>Scan Results & Findings</h2>
+                            <p class="subtitle" id="results-meta-text">Completed scan details</p>
+                        </div>
+                        <div class="action-buttons">
+                            <button id="view-report-html-btn" class="btn btn-secondary">Open Full HTML Report ↗</button>
+                        </div>
+                    </div>
+
+                    <!-- Severity Summary Pills -->
+                    <div class="severity-summary-bar">
+                        <div class="summary-pill pill-critical">
+                            <span class="pill-count" id="count-critical">0</span>
+                            <span class="pill-label">Critical</span>
+                        </div>
+                        <div class="summary-pill pill-high">
+                            <span class="pill-count" id="count-high">0</span>
+                            <span class="pill-label">High</span>
+                        </div>
+                        <div class="summary-pill pill-medium">
+                            <span class="pill-count" id="count-medium">0</span>
+                            <span class="pill-label">Medium</span>
+                        </div>
+                        <div class="summary-pill pill-low">
+                            <span class="pill-count" id="count-low">0</span>
+                            <span class="pill-label">Low</span>
+                        </div>
+                        <div class="summary-pill pill-total">
+                            <span class="pill-count" id="count-total">0</span>
+                            <span class="pill-label">Total Findings</span>
+                        </div>
+                    </div>
+
+                    <!-- Findings Table -->
+                    <div class="table-responsive">
+                        <table class="findings-table">
+                            <thead>
+                                <tr>
+                                    <th>Severity</th>
+                                    <th>Title</th>
+                                    <th>Agent Module</th>
+                                    <th>Affected Surface</th>
+                                    <th>OWASP Category</th>
+                                </tr>
+                            </thead>
+                            <tbody id="findings-table-body">
+                                <tr>
+                                    <td colspan="5" class="empty-state">No findings detected yet.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Scan History Section -->
+            <section class="card history-card">
+                <div class="card-header">
+                    <h2>Recent Scans</h2>
+                    <p class="subtitle">History of scans performed across web applications</p>
+                </div>
+                <div id="history-list" class="history-list">
+                    <div class="empty-history">Loading scan history...</div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>VIBE SHIELD v1.0.0 — Autonomous Security & Quality Intelligence Agent created by <strong>Aarav Khanal</strong></p>
+        </footer>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
