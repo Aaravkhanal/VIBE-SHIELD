@@ -1,0 +1,9 @@
+.github/
+website/
+vibe-shield-reports/
+screenshots/
+vibe-shield.config.json
+latest-report.json
+*.log
+.DS_Store
+*.docx

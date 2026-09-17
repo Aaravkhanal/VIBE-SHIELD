@@ -1,0 +1,10 @@
+node_modules/
+vibe-shield-reports/
+latest-report.json
+dist/
+.env
+*.log
+vibe-shield.config.json
+screenshots/
+.DS_Store
+*.docx

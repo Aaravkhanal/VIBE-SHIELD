@@ -1,0 +1,52 @@
+Vibe Shield Public License v1.0
+
+Copyright (c) 2026 Aarav Khanal (https://github.com/Aaravkhanal)
+
+Permission is hereby granted, free of charge, to any person or organization
+obtaining a copy of this software and associated documentation files (the
+"Software"), to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following conditions:
+
+1. ATTRIBUTION
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software. Any public-facing use,
+   derivative work, or redistribution must include clear attribution to the
+   original author:
+
+       "Built with VIBE SHIELD — https://github.com/Aaravkhanal/vibe-shield"
+
+   This attribution may appear in documentation, README files, about pages,
+   or CLI output, but must be reasonably discoverable by end users.
+
+2. TRADEMARK & BRANDING
+   The name "VIBE SHIELD", the VIBE SHIELD logo, and associated branding are trademarks of
+   Aarav Khanal. You may NOT use the name "VIBE SHIELD" or any confusingly similar
+   name in the title or branding of derivative products without prior written
+   permission from the copyright holder. This restriction does not apply to
+   accurate descriptive references (e.g., "based on VIBE SHIELD" or "compatible with
+   VIBE SHIELD").
+
+3. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+4. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+   DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+   USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+5. RESPONSIBLE USE
+   This software is intended for authorized security testing and quality
+   assurance purposes only. Users are solely responsible for ensuring that
+   their use of the Software complies with all applicable laws, regulations,
+   and the terms of service of any systems being tested. The authors disclaim
+   all liability for unauthorized or malicious use.
+
+6. CONTRIBUTIONS
+   By submitting contributions (pull requests, patches, issues, or other
+   modifications) to this project, you agree to license your contributions
+   under the same terms as this license, and you represent that you have the
+   right to do so.

@@ -1,0 +1,45 @@
+# VIBE SHIELD Security Scan — Run on every PR or manual trigger
+name: VIBE SHIELD Security Scan
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      target-url:
+        description: 'Target URL to scan'
+        required: true
+      severity:
+        description: 'Fail threshold (critical|high|medium|low|none)'
+        required: false
+        default: 'high'
+
+jobs:
+  vibe-shield-scan:
+    name: 🛡️ VIBE SHIELD Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # Required for SARIF upload
+      pull-requests: write    # Required for PR comments
+      issues: write           # Required for PR comments
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run VIBE SHIELD Scan
+        uses: ./  # Use local action (change to vibe-shield-security/vibe-shield@v1 for published action)
+        with:
+          target-url: ${{ github.event.inputs.target-url || 'https://your-staging-url.com' }}
+          modules: 'qa,security,ai,logic,api'
+          severity-threshold: 'low'
+          fail-on-severity: ${{ github.event.inputs.severity || 'high' }}
+          sarif-upload: 'true'
+          comment-on-pr: 'true'
+          max-pages: '30'
+          verbose: 'false'
+          Uncomment for authenticated scanning:
+          auth-username: ${{ secrets.SCAN_USERNAME }}
+          auth-password: ${{ secrets.SCAN_PASSWORD }}
+          auth-strategy: 'auto'

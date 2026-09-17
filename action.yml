@@ -1,0 +1,288 @@
+name: 'VIBE SHIELD Security Scan'
+description: 'Run VIBE SHIELD autonomous security & QA scanning on your web application'
+author: 'Aarav Khanal'
+branding:
+  icon: 'shield'
+  color: 'green'
+
+inputs:
+  target-url:
+    description: 'Target URL to scan'
+    required: true
+  config-path:
+    description: 'Path to vibe-shield.config.json'
+    required: false
+    default: ''
+  modules:
+    description: 'Comma-separated modules to run (qa,security,ai,logic,api)'
+    required: false
+    default: 'qa,security,ai,logic,api'
+  severity-threshold:
+    description: 'Minimum severity to report (critical|high|medium|low)'
+    required: false
+    default: 'low'
+  fail-on-severity:
+    description: 'Fail the action if findings at this severity or above are found (critical|high|medium|low|none)'
+    required: false
+    default: 'high'
+  sarif-upload:
+    description: 'Upload SARIF results to GitHub Security tab'
+    required: false
+    default: 'true'
+  comment-on-pr:
+    description: 'Post scan summary as PR comment'
+    required: false
+    default: 'true'
+  auth-username:
+    description: 'Username for authenticated scanning'
+    required: false
+    default: ''
+  auth-password:
+    description: 'Password for authenticated scanning'
+    required: false
+    default: ''
+  auth-strategy:
+    description: 'Authentication strategy (auto|form|api|cookie)'
+    required: false
+    default: 'auto'
+  max-pages:
+    description: 'Maximum pages to crawl'
+    required: false
+    default: '50'
+  enable-llm:
+    description: 'Enable optional LLM augmentation (requires OPENAI_API_KEY or ANTHROPIC_API_KEY in job env and consent)'
+    required: false
+    default: 'false'
+  llm-provider:
+    description: 'LLM provider when enabled (openai|anthropic)'
+    required: false
+    default: 'openai'
+  llm-model:
+    description: 'LLM model id (provider default if empty)'
+    required: false
+    default: ''
+  verbose:
+    description: 'Enable verbose logging'
+    required: false
+    default: 'false'
+
+outputs:
+  report-path:
+    description: 'Path to the generated report directory'
+  sarif-path:
+    description: 'Path to the SARIF report file'
+  findings-count:
+    description: 'Total number of findings'
+  critical-count:
+    description: 'Number of critical findings'
+  high-count:
+    description: 'Number of high findings'
+  exit-code:
+    description: 'Exit code (0 = pass, 1 = findings above threshold)'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install VIBE SHIELD
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}
+        npm ci --production 2>/dev/null || npm install --production
+
+    - name: Install Playwright browsers
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}
+        npx playwright install chromium --with-deps
+
+    - name: Run VIBE SHIELD Scan
+      id: scan
+      shell: bash
+      env:
+        VIBE_SHIELD_TARGET_URL: ${{ inputs.target-url }}
+        VIBE_SHIELD_MODULES: ${{ inputs.modules }}
+        VIBE_SHIELD_SEVERITY: ${{ inputs.severity-threshold }}
+        VIBE_SHIELD_FAIL_ON: ${{ inputs.fail-on-severity }}
+        VIBE_SHIELD_CONFIG: ${{ inputs.config-path }}
+        VIBE_SHIELD_AUTH_USER: ${{ inputs.auth-username }}
+        VIBE_SHIELD_AUTH_PASS: ${{ inputs.auth-password }}
+        VIBE_SHIELD_AUTH_STRATEGY: ${{ inputs.auth-strategy }}
+        VIBE_SHIELD_MAX_PAGES: ${{ inputs.max-pages }}
+        VIBE_SHIELD_VERBOSE: ${{ inputs.verbose }}
+        VIBE_SHIELD_ENABLE_LLM: ${{ inputs.enable-llm }}
+        VIBE_SHIELD_LLM_PROVIDER: ${{ inputs.llm-provider }}
+        VIBE_SHIELD_LLM_MODEL: ${{ inputs.llm-model }}
+        OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+      run: |
+        REPORT_DIR="${{ runner.temp }}/vibe-shield-reports"
+        
+        # Build command
+        CMD="node ${{ github.action_path }}/src/cli.js scan \"${VIBE_SHIELD_TARGET_URL}\""
+        CMD="${CMD} -m ${VIBE_SHIELD_MODULES}"
+        CMD="${CMD} -s ${VIBE_SHIELD_SEVERITY}"
+        CMD="${CMD} -o ${REPORT_DIR}"
+        CMD="${CMD} --max-pages ${VIBE_SHIELD_MAX_PAGES}"
+        CMD="${CMD} --prod-safe"
+        
+        if [ -n "${VIBE_SHIELD_CONFIG}" ]; then
+          CMD="${CMD} -c ${VIBE_SHIELD_CONFIG}"
+        fi
+        
+        if [ -n "${VIBE_SHIELD_AUTH_USER}" ] && [ -n "${VIBE_SHIELD_AUTH_PASS}" ]; then
+          CMD="${CMD} --username ${VIBE_SHIELD_AUTH_USER} --password ${VIBE_SHIELD_AUTH_PASS} --auth-strategy ${VIBE_SHIELD_AUTH_STRATEGY}"
+        fi
+        
+        if [ "${VIBE_SHIELD_VERBOSE}" = "true" ]; then
+          CMD="${CMD} --verbose"
+        fi
+
+        if [ "${VIBE_SHIELD_ENABLE_LLM}" = "true" ] && { [ -n "${OPENAI_API_KEY}" ] || [ -n "${ANTHROPIC_API_KEY}" ]; }; then
+          CMD="${CMD} --llm --llm-consent --llm-provider ${VIBE_SHIELD_LLM_PROVIDER}"
+          if [ -n "${VIBE_SHIELD_LLM_MODEL}" ]; then
+            CMD="${CMD} --llm-model ${VIBE_SHIELD_LLM_MODEL}"
+          fi
+        fi
+        
+        # Run scan
+        eval ${CMD} || true
+        
+        # Parse results
+        if [ -f "${REPORT_DIR}/report.json" ]; then
+          eval $(node --input-type=module -e "
+            import { readFileSync } from 'fs';
+            const r = JSON.parse(readFileSync('${REPORT_DIR}/report.json', 'utf-8'));
+            const s = r.dedupSummary || r.summary;
+            console.log('FINDINGS=' + s.total);
+            console.log('CRITICAL=' + s.critical);
+            console.log('HIGH=' + s.high);
+            console.log('MEDIUM=' + s.medium);
+            console.log('LOW=' + s.low);
+          ")
+        else
+          FINDINGS=0; CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0
+        fi
+        
+        echo "report-path=${REPORT_DIR}" >> $GITHUB_OUTPUT
+        echo "sarif-path=${REPORT_DIR}/report.sarif" >> $GITHUB_OUTPUT
+        echo "findings-count=${FINDINGS}" >> $GITHUB_OUTPUT
+        echo "critical-count=${CRITICAL}" >> $GITHUB_OUTPUT
+        echo "high-count=${HIGH}" >> $GITHUB_OUTPUT
+        
+        # Determine exit code based on fail-on-severity
+        EXIT_CODE=0
+        case "${VIBE_SHIELD_FAIL_ON}" in
+          critical) [ "${CRITICAL}" -gt 0 ] && EXIT_CODE=1 ;;
+          high)     [ "${CRITICAL}" -gt 0 ] || [ "${HIGH}" -gt 0 ] && EXIT_CODE=1 ;;
+          medium)   [ "${CRITICAL}" -gt 0 ] || [ "${HIGH}" -gt 0 ] || [ "${MEDIUM}" -gt 0 ] && EXIT_CODE=1 ;;
+          low)      [ "${FINDINGS}" -gt 0 ] && EXIT_CODE=1 ;;
+          none)     EXIT_CODE=0 ;;
+        esac
+        
+        echo "exit-code=${EXIT_CODE}" >> $GITHUB_OUTPUT
+
+    - name: Upload SARIF to GitHub Security
+      if: inputs.sarif-upload == 'true' && hashFiles(steps.scan.outputs.sarif-path) != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif-path }}
+        category: 'vibe-shield-security-scan'
+      continue-on-error: true
+
+    - name: Comment on PR
+      if: inputs.comment-on-pr == 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const reportPath = '${{ steps.scan.outputs.report-path }}/report.json';
+          
+          let body = '## 🛡️ VIBE SHIELD Security Scan Results\n\n';
+          
+          if (fs.existsSync(reportPath)) {
+            const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+            const s = report.dedupSummary || report.summary;
+            const ds = report.dedupStats;
+            
+            // Status badge
+            const hasIssues = s.critical > 0 || s.high > 0;
+            body += hasIssues 
+              ? '> ⚠️ **Security issues detected** — review required\n\n'
+              : '> ✅ **No critical or high severity issues found**\n\n';
+            
+            // Summary table
+            body += '| Severity | Count |\n|----------|-------|\n';
+            if (s.critical > 0) body += `| 🔴 Critical | ${s.critical} |\n`;
+            if (s.high > 0) body += `| 🟠 High | ${s.high} |\n`;
+            if (s.medium > 0) body += `| 🟡 Medium | ${s.medium} |\n`;
+            if (s.low > 0) body += `| 🔵 Low | ${s.low} |\n`;
+            body += `| **Total** | **${s.total}** |\n\n`;
+            
+            // Dedup stats
+            if (ds && ds.duplicatesRemoved > 0) {
+              body += `*${ds.rawCount} raw findings deduplicated to ${ds.dedupedCount} unique (${ds.reductionPercent}% reduction)*\n\n`;
+            }
+            
+            // Top findings
+            const findings = report.findings || [];
+            if (findings.length > 0) {
+              body += '### Top Findings\n\n';
+              for (const f of findings.slice(0, 5)) {
+                const icon = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵', info: '⚪' }[f.severity] || '⚪';
+                body += `- ${icon} **${f.title}** — ${f.affected_surface || f.affected_surfaces?.[0] || 'N/A'}\n`;
+              }
+              if (findings.length > 5) {
+                body += `\n*...and ${findings.length - 5} more. See full report in artifacts.*\n`;
+              }
+            }
+            
+            body += `\n---\n*Scanned by [VIBE SHIELD](https://github.com/Aaravkhanal/vibe-shield) v${report.meta?.version || ''}*`;
+          } else {
+            body += '⚠️ Scan completed but no report was generated. Check workflow logs for errors.';
+          }
+          
+          // Find and update existing comment, or create new one
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const botComment = comments.find(c => c.body.includes('VIBE SHIELD Security Scan Results'));
+          
+          if (botComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+          }
+
+    - name: Upload Report Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: vibe-shield-scan-report
+        path: ${{ steps.scan.outputs.report-path }}
+        retention-days: 30
+
+    - name: Check Threshold
+      if: steps.scan.outputs.exit-code == '1'
+      shell: bash
+      run: |
+        echo "::error::VIBE SHIELD scan found findings at or above the '${{ inputs.fail-on-severity }}' severity threshold."
+        echo "Critical: ${{ steps.scan.outputs.critical-count }}, High: ${{ steps.scan.outputs.high-count }}, Total: ${{ steps.scan.outputs.findings-count }}"
+        exit 1

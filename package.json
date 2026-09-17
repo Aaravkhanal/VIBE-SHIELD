@@ -1,0 +1,63 @@
+{
+  "name": "vibe-shield",
+  "version": "1.0.0",
+  "description": "VIBE SHIELD — Autonomous Security & Quality Intelligence Agent for vibe-coded apps. XSS, SQLi, prompt injection, QA testing, and attack chain correlation in one command.",
+  "type": "module",
+  "main": "src/cli.js",
+  "bin": {
+    "vibe-shield": "bin/vibe-shield"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "src/",
+    "bin/",
+    "scripts/",
+    "action.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "scan": "node src/cli.js scan",
+    "postinstall": "node scripts/postinstall.js",
+    "prepublishOnly": "node src/cli.js --help"
+  },
+  "keywords": [
+    "security",
+    "qa",
+    "testing",
+    "automation",
+    "playwright",
+    "scanning",
+    "xss",
+    "sql-injection",
+    "prompt-injection",
+    "ai-security",
+    "vulnerability-scanner",
+    "penetration-testing",
+    "vibe-coding",
+    "autonomous-testing",
+    "attack-chain"
+  ],
+  "author": {
+    "name": "Aarav Khanal",
+    "url": "https://github.com/Aaravkhanal"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Aaravkhanal/vibe-shield",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Aaravkhanal/vibe-shield.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Aaravkhanal/vibe-shield/issues"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "nanoid": "^5.0.9",
+    "ora": "^8.1.1",
+    "playwright": "^1.49.1",
+    "winston": "^3.17.0"
+  }
+}

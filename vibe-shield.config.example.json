@@ -1,0 +1,54 @@
+{
+    "target_url": "https://example.com",
+    "auth": {
+        "strategy": "auto",
+        "login_url": null,
+        "username_selector": null,
+        "password_selector": null,
+        "submit_selector": null
+    },
+    "business_context": "E-commerce SaaS platform. Users can browse products, add to cart, checkout with Stripe. Admin panel at /admin. Subscription tiers: free, pro, enterprise.",
+    "modules_enabled": [
+        "qa",
+        "security",
+        "ai",
+        "logic",
+        "api"
+    ],
+    "severity_threshold": "low",
+    "safety_mode": "safe-active",
+    "halt_on_critical": false,
+    "prod_safe": false,
+    "notify_webhook": null,
+    "crawler": {
+        "max_depth": 5,
+        "max_pages": 50,
+        "timeout": 30000,
+        "concurrency": 4
+    },
+    "llm": {
+        "enabled": false,
+        "provider": "openai",
+        "model": null,
+        "max_tokens": 1024,
+        "max_calls": 50,
+        "token_budget": 100000,
+        "timeout_seconds": 30,
+        "consent": false,
+        "base_url": null
+    },
+    "viewports": {
+        "mobile": {
+            "width": 375,
+            "height": 812
+        },
+        "tablet": {
+            "width": 768,
+            "height": 1024
+        },
+        "desktop": {
+            "width": 1440,
+            "height": 900
+        }
+    }
+}
