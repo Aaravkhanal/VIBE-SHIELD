@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) throw new Error(data.error || 'Failed to start scan');
 
             currentScanId = data.scanId;
-            pollScanProgress(currentScanId);
+            streamScanProgress(currentScanId);
         } catch (err) {
             showToast('Scan Error: ' + err.message, 'error');
             stopTimer();
@@ -67,18 +67,98 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Poll Progress (max 10 minutes = 600 polls)
-    function pollScanProgress(scanId) {
+    // Real-Time Push Progress via Server-Sent Events (SSE)
+    let activeEventSource = null;
+
+    function streamScanProgress(scanId) {
+        if (activeEventSource) {
+            activeEventSource.close();
+            activeEventSource = null;
+        }
+
+        const fallbackTimeout = setTimeout(() => {
+            if (activeEventSource) {
+                activeEventSource.close();
+                activeEventSource = null;
+            }
+            stopTimer();
+            startBtn.disabled = false;
+            startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
+            showToast('⚠️ Scan connection timed out after 10 minutes.', 'error');
+        }, 600000);
+
+        if (typeof EventSource !== 'undefined') {
+            try {
+                const evtSource = new EventSource(`/api/scan/${scanId}/events`);
+                activeEventSource = evtSource;
+
+                evtSource.onmessage = (event) => {
+                    try {
+                        const status = JSON.parse(event.data);
+                        if (status.error) {
+                            showToast(`⚠️ ${status.error}`, 'error');
+                            evtSource.close();
+                            activeEventSource = null;
+                            clearTimeout(fallbackTimeout);
+                            stopTimer();
+                            startBtn.disabled = false;
+                            startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
+                            return;
+                        }
+
+                        if (status.agents) {
+                            updateAgentState('crawl', status.agents['VIBE-SHIELD-CRAWL']);
+                            updateAgentState('qa', status.agents['VIBE-SHIELD-QA']);
+                            updateAgentState('sec', status.agents['VIBE-SHIELD-SEC']);
+                            updateAgentState('ai', status.agents['VIBE-SHIELD-AI']);
+                            updateAgentState('logic', status.agents['VIBE-SHIELD-LOGIC']);
+                            updateAgentState('api', status.agents['VIBE-SHIELD-API']);
+                        }
+
+                        if (status.completed) {
+                            clearTimeout(fallbackTimeout);
+                            evtSource.close();
+                            activeEventSource = null;
+                            stopTimer();
+                            startBtn.disabled = false;
+                            startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
+                            displayResults(status);
+                            loadHistory();
+                        }
+                    } catch (e) {
+                        console.error('Error parsing SSE scan status:', e);
+                    }
+                };
+
+                evtSource.onerror = (err) => {
+                    console.warn('SSE connection interrupted, falling back to polling...', err);
+                    evtSource.close();
+                    activeEventSource = null;
+                    pollScanProgress(scanId, fallbackTimeout);
+                };
+                return;
+            } catch (err) {
+                console.warn('EventSource initialization failed, using polling fallback', err);
+            }
+        }
+
+        // Fallback to polling if SSE unavailable
+        pollScanProgress(scanId, fallbackTimeout);
+    }
+
+    // Fallback Poll Progress (max 10 minutes)
+    function pollScanProgress(scanId, existingTimeout) {
         let pollCount = 0;
         const MAX_POLLS = 600;
         const interval = setInterval(async () => {
             pollCount++;
             if (pollCount > MAX_POLLS) {
                 clearInterval(interval);
+                if (existingTimeout) clearTimeout(existingTimeout);
                 stopTimer();
                 startBtn.disabled = false;
                 startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
-                showToast('⚠️ Scan timed out after 10 minutes. Check server logs.', 'error');
+                showToast('⚠️ Scan timed out after 10 minutes.', 'error');
                 return;
             }
 
@@ -87,15 +167,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!res.ok) return;
                 const status = await res.json();
 
-                updateAgentState('crawl', status.agents['VIBE-SHIELD-CRAWL']);
-                updateAgentState('qa', status.agents['VIBE-SHIELD-QA']);
-                updateAgentState('sec', status.agents['VIBE-SHIELD-SEC']);
-                updateAgentState('ai', status.agents['VIBE-SHIELD-AI']);
-                updateAgentState('logic', status.agents['VIBE-SHIELD-LOGIC']);
-                updateAgentState('api', status.agents['VIBE-SHIELD-API']);
+                if (status.agents) {
+                    updateAgentState('crawl', status.agents['VIBE-SHIELD-CRAWL']);
+                    updateAgentState('qa', status.agents['VIBE-SHIELD-QA']);
+                    updateAgentState('sec', status.agents['VIBE-SHIELD-SEC']);
+                    updateAgentState('ai', status.agents['VIBE-SHIELD-AI']);
+                    updateAgentState('logic', status.agents['VIBE-SHIELD-LOGIC']);
+                    updateAgentState('api', status.agents['VIBE-SHIELD-API']);
+                }
 
                 if (status.completed) {
                     clearInterval(interval);
+                    if (existingTimeout) clearTimeout(existingTimeout);
                     stopTimer();
                     startBtn.disabled = false;
                     startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
@@ -528,9 +611,50 @@ document.addEventListener('DOMContentLoaded', () => {
             this.draggedNode = null;
             this.animId = null;
 
+            // Performance flags
+            this.isDirty = true;
+            this.isVisible = true;
+            this.isTabActive = !document.hidden;
+
+            this.initVisibilityObserver();
             this.initEvents();
             this.resize();
-            window.addEventListener('resize', () => this.resize());
+            window.addEventListener('resize', () => {
+                this.resize();
+                this.markDirty();
+            });
+        }
+
+        initVisibilityObserver() {
+            if ('IntersectionObserver' in window) {
+                this.observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        this.isVisible = entry.isIntersecting;
+                        if (this.isVisible && this.isTabActive) {
+                            this.markDirty();
+                        } else {
+                            this.stopAnimation();
+                        }
+                    });
+                }, { threshold: 0.05 });
+                this.observer.observe(this.canvas);
+            }
+
+            document.addEventListener('visibilitychange', () => {
+                this.isTabActive = !document.hidden;
+                if (this.isVisible && this.isTabActive) {
+                    this.markDirty();
+                } else {
+                    this.stopAnimation();
+                }
+            });
+        }
+
+        markDirty() {
+            this.isDirty = true;
+            if (this.isVisible && this.isTabActive && !this.animId) {
+                this.startAnimation();
+            }
         }
 
         resize() {
@@ -558,6 +682,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     isDown = true;
                     this.canvas.style.cursor = 'grabbing';
                     this.showInspector(clicked);
+                    this.markDirty();
                 }
             });
 
@@ -570,17 +695,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.draggedNode.x = x - dragOffset.x;
                     this.draggedNode.y = y - dragOffset.y;
                     this.canvas.style.cursor = 'grabbing';
+                    this.markDirty();
                 } else {
                     const hovered = this.findNodeAt(x, y);
-                    this.hoveredNode = hovered;
-                    this.canvas.style.cursor = hovered ? 'pointer' : 'default';
+                    if (this.hoveredNode !== hovered) {
+                        this.hoveredNode = hovered;
+                        this.canvas.style.cursor = hovered ? 'pointer' : 'default';
+                        this.markDirty();
+                    }
                 }
             });
 
             window.addEventListener('mouseup', () => {
-                isDown = false;
-                this.draggedNode = null;
-                if (this.canvas) this.canvas.style.cursor = this.hoveredNode ? 'pointer' : 'default';
+                if (isDown) {
+                    isDown = false;
+                    this.draggedNode = null;
+                    if (this.canvas) this.canvas.style.cursor = this.hoveredNode ? 'pointer' : 'default';
+                    this.markDirty();
+                }
             });
 
             const closeBtn = document.getElementById('close-inspector-btn');
@@ -588,6 +720,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 closeBtn.onclick = () => {
                     this.inspector.classList.add('hidden');
                     this.selectedNode = null;
+                    this.markDirty();
                 };
             }
 
@@ -780,19 +913,41 @@ document.addEventListener('DOMContentLoaded', () => {
             this.particles.forEach(p => {
                 p.speed = 0.02 + Math.random() * 0.02;
             });
+            this.markDirty();
             setTimeout(() => {
                 this.particles.forEach(p => p.speed = 0.005 + Math.random() * 0.006);
             }, 3000);
         }
 
+        stopAnimation() {
+            if (this.animId) {
+                cancelAnimationFrame(this.animId);
+                this.animId = null;
+            }
+        }
+
         startAnimation() {
-            if (this.animId) cancelAnimationFrame(this.animId);
+            if (this.animId) return;
+            if (!this.isVisible || !this.isTabActive) return;
+
             const render = () => {
+                if (!this.isVisible || !this.isTabActive) {
+                    this.animId = null;
+                    return;
+                }
+
                 this.update();
                 this.draw();
-                this.animId = requestAnimationFrame(render);
+                this.isDirty = false;
+
+                // Animate continuously when particles exist or when dragging/animating
+                if (this.particles.length > 0 || this.draggedNode || this.isDirty) {
+                    this.animId = requestAnimationFrame(render);
+                } else {
+                    this.animId = null;
+                }
             };
-            render();
+            this.animId = requestAnimationFrame(render);
         }
 
         update() {

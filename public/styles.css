@@ -1,7 +1,7 @@
 :root {
     --bg-primary: #0a0d14;
-    --bg-card: rgba(18, 24, 38, 0.75);
-    --bg-card-hover: rgba(26, 35, 54, 0.85);
+    --bg-card: #0f1523;
+    --bg-card-hover: #161e31;
     --border-color: rgba(255, 255, 255, 0.08);
     --border-glow: rgba(0, 255, 136, 0.25);
 
@@ -55,7 +55,6 @@ body {
     align-items: center;
     padding: 16px 24px;
     background: var(--bg-card);
-    backdrop-filter: blur(12px);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     margin-bottom: 24px;
@@ -113,7 +112,6 @@ body {
 /* Main Cards */
 .card {
     background: var(--bg-card);
-    backdrop-filter: blur(12px);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
     padding: 28px;

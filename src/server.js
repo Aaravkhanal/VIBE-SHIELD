@@ -18,6 +18,20 @@ const PORT = process.env.PORT || 3000;
 // In-memory store for scans
 const activeScans = new Map();
 const scanHistory = [];
+const scanSseClients = new Map(); // scanId -> Set of SSE response streams
+
+function broadcastScanProgress(scanId, data) {
+    const clients = scanSseClients.get(scanId);
+    if (!clients || clients.size === 0) return;
+    const payload = `data: ${JSON.stringify(data)}\n\n`;
+    for (const client of clients) {
+        try {
+            client.write(payload);
+        } catch (err) {
+            clients.delete(client);
+        }
+    }
+}
 
 function initScanHistoryFromDisk() {
     try {
@@ -173,11 +187,13 @@ const server = http.createServer((req, res) => {
                 child.stdout.on('data', data => {
                     const text = data.toString();
                     parseScanLogs(scanData, text);
+                    broadcastScanProgress(scanId, scanData);
                 });
 
                 child.stderr.on('data', data => {
                     const text = data.toString();
                     parseScanLogs(scanData, text);
+                    broadcastScanProgress(scanId, scanData);
                 });
 
                 child.on('close', code => {
@@ -215,6 +231,8 @@ const server = http.createServer((req, res) => {
                         findingsCount: scanData.report?.summary?.total || 0,
                         reportHtmlUrl: scanData.reportHtmlUrl
                     });
+
+                    broadcastScanProgress(scanId, scanData);
                 });
 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -222,6 +240,46 @@ const server = http.createServer((req, res) => {
             } catch (err) {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err.message }));
+            }
+        });
+        return;
+    }
+
+    // API: SSE Stream for Live Scan Progress
+    if (pathname.startsWith('/api/scan/') && pathname.endsWith('/events') && req.method === 'GET') {
+        const scanId = pathname.replace('/api/scan/', '').replace('/events', '');
+        const scanData = activeScans.get(scanId);
+
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+        });
+        res.write('\n'); // keep-alive ping
+
+        if (!scanData) {
+            res.write(`data: ${JSON.stringify({ error: 'Scan ID not found', completed: true })}\n\n`);
+            return res.end();
+        }
+
+        // Send initial current state immediately
+        res.write(`data: ${JSON.stringify(scanData)}\n\n`);
+
+        if (scanData.completed) {
+            return res.end();
+        }
+
+        if (!scanSseClients.has(scanId)) {
+            scanSseClients.set(scanId, new Set());
+        }
+        const clientSet = scanSseClients.get(scanId);
+        clientSet.add(res);
+
+        req.on('close', () => {
+            clientSet.delete(res);
+            if (clientSet.size === 0) {
+                scanSseClients.delete(scanId);
             }
         });
         return;
