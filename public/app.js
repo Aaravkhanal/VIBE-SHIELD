@@ -137,6 +137,182 @@ document.addEventListener('DOMContentLoaded', () => {
         clearInterval(timerInterval);
     }
 
+    let currentScoreData = null;
+
+    function renderSecurityScoreAudit(report) {
+        const scoreData = calculateSecurityScore(report);
+        currentScoreData = scoreData;
+
+        const scoreCircle = document.getElementById('score-circle');
+        const scoreGradeText = document.getElementById('score-grade-text');
+        const scoreNumberText = document.getElementById('score-number-text');
+        const scoreStatusText = document.getElementById('score-status-text');
+        const liveBadgeContainer = document.getElementById('live-badge-container');
+
+        if (scoreGradeText) {
+            scoreGradeText.textContent = scoreData.grade;
+            scoreGradeText.style.color = scoreData.gradeColor;
+            scoreGradeText.style.textShadow = `0 0 12px ${scoreData.gradeColor}88`;
+        }
+        if (scoreNumberText) {
+            scoreNumberText.textContent = `${scoreData.overallScore}/100`;
+        }
+        if (scoreStatusText) {
+            scoreStatusText.textContent = scoreData.statusText;
+        }
+        if (scoreCircle) {
+            scoreCircle.style.borderColor = scoreData.gradeColor;
+            scoreCircle.style.boxShadow = `0 0 25px ${scoreData.gradeColor}44, inset 0 0 15px ${scoreData.gradeColor}22`;
+        }
+
+        // Subscores
+        const sub = scoreData.subCategories;
+        const setSub = (key, val) => {
+            const valEl = document.getElementById(`subscore-val-${key}`);
+            const barEl = document.getElementById(`subscore-bar-${key}`);
+            if (valEl) valEl.textContent = `${val}%`;
+            if (barEl) barEl.style.width = `${val}%`;
+        };
+
+        setSub('headers', sub.headers.score);
+        setSub('ai', sub.aiSafety.score);
+        setSub('api', sub.apiAuth.score);
+        setSub('logic', sub.logic.score);
+
+        // Render Live Badge
+        if (liveBadgeContainer) {
+            liveBadgeContainer.innerHTML = generateSvgBadge(scoreData.grade, scoreData.overallScore, scoreData.gradeColor);
+        }
+    }
+
+    function calculateSecurityScore(report) {
+        const summary = report.dedupSummary || report.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
+        const findings = report.findings || [];
+
+        let deductions = 0;
+        deductions += (summary.critical || 0) * 25;
+        deductions += (summary.high || 0) * 12;
+        deductions += (summary.medium || 0) * 4;
+        deductions += (summary.low || 0) * 1;
+
+        const overallScore = Math.max(0, Math.min(100, Math.round(100 - deductions)));
+
+        let grade = 'F';
+        let gradeColor = '#ff3366';
+        let statusText = 'Severe Exploitable Threats';
+
+        if (overallScore >= 97 && summary.critical === 0 && summary.high === 0) {
+            grade = 'A+';
+            gradeColor = '#00ff88';
+            statusText = 'Fortified & Hardened';
+        } else if (overallScore >= 90 && summary.critical === 0 && summary.high === 0) {
+            grade = 'A';
+            gradeColor = '#00ff88';
+            statusText = 'Excellent Defense Posture';
+        } else if (overallScore >= 80 && summary.critical === 0) {
+            grade = 'B';
+            gradeColor = '#00e5ff';
+            statusText = 'Good Security with Minor Gaps';
+        } else if (overallScore >= 65) {
+            grade = 'C';
+            gradeColor = '#ffb700';
+            statusText = 'Moderate Risk Exposure';
+        } else if (overallScore >= 50) {
+            grade = 'D';
+            gradeColor = '#ff8800';
+            statusText = 'High Vulnerability Risk';
+        } else {
+            grade = 'F';
+            gradeColor = '#ff3366';
+            statusText = 'Severe Exploitable Threats';
+        }
+
+        const subCategories = {
+            headers: { name: 'Headers & Perimeter', score: 100 },
+            aiSafety: { name: 'AI & Prompt Defense', score: 100 },
+            apiAuth: { name: 'API & Auth Hardening', score: 100 },
+            logic: { name: 'Logic & Surface Hygiene', score: 100 }
+        };
+
+        findings.forEach(f => {
+            const title = (f.title || '').toLowerCase();
+            const mod = (f.module || f.agent || '').toLowerCase();
+            const sev = f.severity || 'low';
+            const penalty = sev === 'critical' ? 30 : sev === 'high' ? 18 : sev === 'medium' ? 8 : 2;
+
+            if (mod.includes('sec') || title.includes('csp') || title.includes('header') || title.includes('cors') || title.includes('tls')) {
+                subCategories.headers.score = Math.max(0, subCategories.headers.score - penalty);
+            } else if (mod.includes('ai') || title.includes('prompt') || title.includes('injection') || title.includes('jailbreak')) {
+                subCategories.aiSafety.score = Math.max(0, subCategories.aiSafety.score - penalty);
+            } else if (mod.includes('api') || title.includes('auth') || title.includes('token') || title.includes('cookie') || title.includes('graphql')) {
+                subCategories.apiAuth.score = Math.max(0, subCategories.apiAuth.score - penalty);
+            } else {
+                subCategories.logic.score = Math.max(0, subCategories.logic.score - penalty);
+            }
+        });
+
+        const badgeMarkdown = `[![VIBE SHIELD Security Grade](https://img.shields.io/badge/VIBE_SHIELD-Grade_${encodeURIComponent(grade)}_${overallScore}%2F100-${gradeColor.replace('#', '')}?style=for-the-badge&logo=shield)](https://github.com/Aaravkhanal/VIBE-SHIELD)`;
+        const badgeHtml = `<a href="https://github.com/Aaravkhanal/VIBE-SHIELD"><img src="https://img.shields.io/badge/VIBE_SHIELD-Grade_${encodeURIComponent(grade)}_${overallScore}%2F100-${gradeColor.replace('#', '')}?style=for-the-badge&logo=shield" alt="VIBE SHIELD Security Grade" /></a>`;
+
+        return { overallScore, grade, gradeColor, statusText, subCategories, badgeMarkdown, badgeHtml };
+    }
+
+    function generateSvgBadge(grade, score, color) {
+        const cleanColor = color || '#00ff88';
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="36" viewBox="0 0 220 36" role="img" aria-label="VIBE SHIELD: Grade ${grade}">
+  <defs>
+    <linearGradient id="badge-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0d14"/>
+      <stop offset="100%" stop-color="#141c2b"/>
+    </linearGradient>
+    <filter id="badge-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <rect width="220" height="36" rx="8" fill="url(#badge-grad)" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+  <text x="14" y="22" fill="#8a99b5" font-family="-apple-system,BlinkMacSystemFont,'Inter',sans-serif" font-size="11" font-weight="700" letter-spacing="0.5">🛡️ VIBE SHIELD</text>
+  <rect x="135" y="6" width="75" height="24" rx="5" fill="${cleanColor}" fill-opacity="0.15" stroke="${cleanColor}" stroke-opacity="0.4"/>
+  <text x="172.5" y="22" fill="${cleanColor}" font-family="-apple-system,BlinkMacSystemFont,'Fira Code',monospace" font-size="12" font-weight="800" text-anchor="middle" filter="url(#badge-glow)">${grade} · ${score}</text>
+</svg>`;
+    }
+
+    // Badge Copy Event Listeners
+    const copyBadgeMdBtn = document.getElementById('copy-badge-md-btn');
+    const copyBadgeHtmlBtn = document.getElementById('copy-badge-html-btn');
+
+    if (copyBadgeMdBtn) {
+        copyBadgeMdBtn.onclick = async () => {
+            if (!currentScoreData) return;
+            try {
+                await navigator.clipboard.writeText(currentScoreData.badgeMarkdown);
+                const orig = copyBadgeMdBtn.textContent;
+                copyBadgeMdBtn.textContent = 'Copied Markdown! ✓';
+                copyBadgeMdBtn.style.color = 'var(--accent-green)';
+                setTimeout(() => {
+                    copyBadgeMdBtn.textContent = orig;
+                    copyBadgeMdBtn.style.color = '';
+                }, 2000);
+            } catch(e) {}
+        };
+    }
+
+    if (copyBadgeHtmlBtn) {
+        copyBadgeHtmlBtn.onclick = async () => {
+            if (!currentScoreData) return;
+            try {
+                await navigator.clipboard.writeText(currentScoreData.badgeHtml);
+                const orig = copyBadgeHtmlBtn.textContent;
+                copyBadgeHtmlBtn.textContent = 'Copied HTML! ✓';
+                copyBadgeHtmlBtn.style.color = 'var(--accent-green)';
+                setTimeout(() => {
+                    copyBadgeHtmlBtn.textContent = orig;
+                    copyBadgeHtmlBtn.style.color = '';
+                }, 2000);
+            } catch(e) {}
+        };
+    }
+
     function displayResults(status) {
         resultsSection.classList.remove('hidden');
         const report = status.report || {};
@@ -154,6 +330,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activeReportPath) {
             viewReportBtn.onclick = () => window.open(activeReportPath, '_blank');
         }
+
+        // Render Vibe Security Score & Shield Badge
+        renderSecurityScoreAudit(report);
 
         // Render Threat Graph
         if (window.threatGraph) {

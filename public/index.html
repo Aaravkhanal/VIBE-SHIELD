@@ -180,6 +180,73 @@
                         </div>
                     </div>
 
+                    <!-- Vibe Security Score & Badge Card -->
+                    <div class="score-audit-container">
+                        <div class="score-main-block">
+                            <div class="score-gauge-wrap">
+                                <div class="score-circle" id="score-circle">
+                                    <span id="score-grade-text" class="score-grade">A</span>
+                                    <span id="score-number-text" class="score-val">94/100</span>
+                                </div>
+                            </div>
+                            <div class="score-text-wrap">
+                                <span class="badge" id="score-posture-badge">VIBE SECURITY POSTURE</span>
+                                <h3 id="score-status-text">Fortified & Hardened</h3>
+                                <p class="subtitle" id="score-summary-desc">Multi-agent compound threat analysis completed.</p>
+                            </div>
+                        </div>
+
+                        <!-- Sub-Category Breakdown Bars -->
+                        <div class="subscores-grid">
+                            <div class="subscore-item">
+                                <div class="subscore-head">
+                                    <span>🛡️ Headers & Perimeter</span>
+                                    <span id="subscore-val-headers">95%</span>
+                                </div>
+                                <div class="progress-track"><div id="subscore-bar-headers" class="progress-fill" style="width: 95%;"></div></div>
+                            </div>
+                            <div class="subscore-item">
+                                <div class="subscore-head">
+                                    <span>🤖 AI & Prompt Defense</span>
+                                    <span id="subscore-val-ai">100%</span>
+                                </div>
+                                <div class="progress-track"><div id="subscore-bar-ai" class="progress-fill" style="width: 100%;"></div></div>
+                            </div>
+                            <div class="subscore-item">
+                                <div class="subscore-head">
+                                    <span>🔑 API & Auth Hardening</span>
+                                    <span id="subscore-val-api">90%</span>
+                                </div>
+                                <div class="progress-track"><div id="subscore-bar-api" class="progress-fill" style="width: 90%;"></div></div>
+                            </div>
+                            <div class="subscore-item">
+                                <div class="subscore-head">
+                                    <span>⚖️ Logic & Surface Hygiene</span>
+                                    <span id="subscore-val-logic">88%</span>
+                                </div>
+                                <div class="progress-track"><div id="subscore-bar-logic" class="progress-fill" style="width: 88%;"></div></div>
+                            </div>
+                        </div>
+
+                        <!-- Dynamic GitHub Badge Widget -->
+                        <div class="badge-export-box">
+                            <div class="badge-preview-area">
+                                <span class="badge-label">OFFICIAL REPO BADGE:</span>
+                                <div id="live-badge-container">
+                                    <!-- Rendered live badge -->
+                                </div>
+                            </div>
+                            <div class="badge-copy-actions">
+                                <button type="button" id="copy-badge-md-btn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;">
+                                    📋 Copy Markdown Badge
+                                </button>
+                                <button type="button" id="copy-badge-html-btn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;">
+                                    📋 Copy HTML Embed
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Severity Summary Pills -->
                     <div class="severity-summary-bar">
                         <div class="summary-pill pill-critical">

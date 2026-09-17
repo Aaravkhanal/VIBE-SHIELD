@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { nanoid } from 'nanoid';
 import { generateAutoPatch } from './utils/patch-generator.js';
+import { calculateSecurityScore, generateSvgBadge } from './utils/security-score.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -241,6 +242,32 @@ const server = http.createServer((req, res) => {
     if (pathname === '/api/scans/history' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify(scanHistory.slice(0, 20)));
+    }
+
+    // API: Dynamic SVG Security Badge
+    if (pathname.startsWith('/api/badge') && req.method === 'GET') {
+        const scanId = parsedUrl.searchParams.get('scanId') || pathname.replace('/api/badge/', '').replace('/api/badge', '');
+        let grade = 'A';
+        let score = 95;
+        let color = '#00ff88';
+
+        if (scanId && fs.existsSync(path.join(REPORTS_DIR, scanId, 'report.json'))) {
+            try {
+                const rep = JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, scanId, 'report.json'), 'utf-8'));
+                const scoreData = calculateSecurityScore(rep);
+                grade = scoreData.grade;
+                score = scoreData.overallScore;
+                color = scoreData.gradeColor;
+            } catch(e) {}
+        } else if (parsedUrl.searchParams.get('grade')) {
+            grade = parsedUrl.searchParams.get('grade');
+            score = parsedUrl.searchParams.get('score') || '90';
+            color = parsedUrl.searchParams.get('color') || '#00ff88';
+        }
+
+        const svg = generateSvgBadge(grade, score, color);
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-cache' });
+        return res.end(svg);
     }
 
     // API: AI Auto-Patch Generator
