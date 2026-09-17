@@ -227,6 +227,19 @@ function parseScanLogs(scanData, text) {
     }
 }
 
-server.listen(PORT, () => {
-    console.log(`\n🛡️  VIBE SHIELD Web Application running at http://localhost:${PORT}\n`);
-});
+function startServer(portToUse) {
+    server.listen(portToUse)
+        .on('listening', () => {
+            console.log(`\n🛡️  VIBE SHIELD Web Application running at http://localhost:${portToUse}\n`);
+        })
+        .on('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+                console.log(`Port ${portToUse} is in use, trying port ${portToUse + 1}...`);
+                startServer(portToUse + 1);
+            } else {
+                console.error('Server error:', err);
+            }
+        });
+}
+
+startServer(Number(PORT));

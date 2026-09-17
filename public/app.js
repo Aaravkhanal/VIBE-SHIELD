@@ -168,12 +168,14 @@ document.addEventListener('DOMContentLoaded', () => {
         findings.forEach(f => {
             const tr = document.createElement('tr');
             const sevClass = 'pill-' + (f.severity || 'low');
+            const remediationText = f.remediation || f.description || 'Review application code and enforce strict input validation.';
             tr.innerHTML = `
                 <td><span class="badge ${sevClass}">${(f.severity || 'LOW').toUpperCase()}</span></td>
                 <td><strong>${escapeHtml(f.title)}</strong></td>
                 <td><code>${escapeHtml(f.agent || 'VIBE-SHIELD')}</code></td>
                 <td>${escapeHtml(f.affected_surface || 'N/A')}</td>
                 <td>${escapeHtml(f.owasp || 'N/A')}</td>
+                <td style="max-width: 320px; font-size: 12px; color: var(--text-secondary);">${escapeHtml(remediationText)}</td>
             `;
             tbody.appendChild(tr);
         });
