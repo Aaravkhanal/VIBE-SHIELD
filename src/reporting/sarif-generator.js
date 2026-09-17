@@ -162,7 +162,7 @@ export function generateSARIF(findings, meta = {}) {
                     name: 'VIBE SHIELD',
                     version: meta.version || getVersion(),
                     semanticVersion: meta.version || getVersion(),
-                    informationUri: 'https://github.com/vibe-shield-security',
+                    informationUri: 'https://github.com/Aaravkhanal/vibe-shield',
                     rules,
                 },
             },
