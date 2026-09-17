@@ -17,6 +17,42 @@ const PORT = process.env.PORT || 3000;
 const activeScans = new Map();
 const scanHistory = [];
 
+function initScanHistoryFromDisk() {
+    try {
+        if (!fs.existsSync(REPORTS_DIR)) return;
+        const reportDirs = fs.readdirSync(REPORTS_DIR)
+            .filter(d => {
+                const p = path.join(REPORTS_DIR, d);
+                return fs.statSync(p).isDirectory() && d !== 'logs' && d !== 'screenshots';
+            })
+            .sort()
+            .reverse();
+
+        for (const dir of reportDirs) {
+            const jsonPath = path.join(REPORTS_DIR, dir, 'report.json');
+            if (fs.existsSync(jsonPath)) {
+                try {
+                    const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+                    scanHistory.push({
+                        scanId: dir,
+                        url: data.meta?.target || 'Unknown',
+                        timestamp: data.meta?.scannedAt || fs.statSync(jsonPath).mtime.toISOString(),
+                        duration: data.meta?.duration ? (data.meta.duration / 1000).toFixed(1) : '0',
+                        findingsCount: data.dedupSummary?.total ?? data.summary?.total ?? 0,
+                        reportHtmlUrl: `/vibe-shield-reports/${dir}/report.html`
+                    });
+                } catch (e) {
+                    // ignore malformed report
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Error reading scan history from disk:', err);
+    }
+}
+
+initScanHistoryFromDisk();
+
 function serveStaticFile(res, filePath, contentType) {
     fs.readFile(filePath, (err, content) => {
         if (err) {
@@ -211,18 +247,16 @@ const server = http.createServer((req, res) => {
 });
 
 function parseScanLogs(scanData, text) {
-    const agentRegex = /(VIBE-SHIELD-[A-Z]+):\s+(Starting\.\.\.|Complete|Running|Error|✔|✘)/g;
-    let match;
-    while ((match = agentRegex.exec(text)) !== null) {
-        const agentName = match[1];
-        if (scanData.agents[agentName]) {
-            if (text.includes(`[${agentName}] Complete`) || text.includes(`✔ [${agentName}]`)) {
-                scanData.agents[agentName].status = 'done';
-                scanData.agents[agentName].message = 'Complete';
-            } else if (text.includes(`[${agentName}] Starting`)) {
-                scanData.agents[agentName].status = 'running';
-                scanData.agents[agentName].message = 'Executing agent probes...';
-            }
+    for (const agentName of Object.keys(scanData.agents)) {
+        if (text.includes(`[${agentName}] Complete`) || text.includes(`✔ [${agentName}]`)) {
+            scanData.agents[agentName].status = 'done';
+            scanData.agents[agentName].message = 'Complete ✔';
+        } else if (text.includes(`[${agentName}] Starting`) || text.includes(`- [${agentName}]`)) {
+            scanData.agents[agentName].status = 'running';
+            scanData.agents[agentName].message = 'Active probing...';
+        } else if (text.includes(`[${agentName}] Error`) || text.includes(`✘ [${agentName}]`)) {
+            scanData.agents[agentName].status = 'error';
+            scanData.agents[agentName].message = 'Error encountered';
         }
     }
 }

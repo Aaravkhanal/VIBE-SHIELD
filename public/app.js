@@ -196,14 +196,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 const item = document.createElement('div');
                 item.className = 'history-item';
                 item.innerHTML = `
-                    <div>
+                    <div style="cursor: pointer;" class="history-info-click">
                         <div class="history-url">${escapeHtml(scan.url)}</div>
-                        <div class="history-meta">${new Date(scan.timestamp).toLocaleString()} · ${scan.findingsCount} findings</div>
+                        <div class="history-meta">${new Date(scan.timestamp).toLocaleString()} · ${scan.findingsCount} findings · ${scan.duration}s</div>
                     </div>
-                    <div>
-                        ${scan.reportHtmlUrl ? `<a href="${scan.reportHtmlUrl}" target="_blank" class="btn btn-secondary" style="padding:4px 10px; font-size:11px;">View Report ↗</a>` : ''}
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-secondary load-scan-btn" style="padding:4px 10px; font-size:11px;">Inspect Details</button>
+                        ${scan.reportHtmlUrl ? `<a href="${scan.reportHtmlUrl}" target="_blank" class="btn btn-primary" style="padding:4px 10px; font-size:11px; text-decoration: none;">HTML Report ↗</a>` : ''}
                     </div>
                 `;
+
+                // Add inspect button event
+                const inspectBtn = item.querySelector('.load-scan-btn');
+                const infoClick = item.querySelector('.history-info-click');
+                const loadScanDetails = async () => {
+                    try {
+                        const res = await fetch(`/vibe-shield-reports/${scan.scanId}/report.json`);
+                        if (!res.ok) return;
+                        const reportData = await res.json();
+                        displayResults({
+                            url: scan.url,
+                            duration: scan.duration,
+                            report: reportData,
+                            reportHtmlUrl: scan.reportHtmlUrl
+                        });
+                        resultsSection.scrollIntoView({ behavior: 'smooth' });
+                    } catch (err) {
+                        console.error('Error loading scan details:', err);
+                    }
+                };
+
+                inspectBtn.onclick = loadScanDetails;
+                infoClick.onclick = loadScanDetails;
                 historyList.appendChild(item);
             });
         } catch (e) {
