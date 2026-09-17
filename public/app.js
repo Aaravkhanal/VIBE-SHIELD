@@ -459,16 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 copyPatchBtn.style.color = 'var(--accent-green)';
                 setTimeout(() => {
                     copyBtnText.textContent = 'Copy Patch';
-                    copyPatchBtn.style.borderColor = '';
-                    copyPatchBtn.style.color = '';
-                }, 2000);
-            } catch (err) {
-                console.error('Failed to copy text:', err);
-            }
-        };
-    }
-
-    // ═══════════════════════════════════════════════
+                    copyPatchBtn.style.bord    // ═══════════════════════════════════════════════
     // Threat Graph Engine (Attack Vector Map)
     // ═══════════════════════════════════════════════
 
@@ -481,6 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
             this.edges = [];
             this.particles = [];
             this.selectedNode = null;
+            this.hoveredNode = null;
             this.draggedNode = null;
             this.animId = null;
 
@@ -512,26 +504,39 @@ document.addEventListener('DOMContentLoaded', () => {
                     dragOffset.x = x - clicked.x;
                     dragOffset.y = y - clicked.y;
                     isDown = true;
+                    this.canvas.style.cursor = 'grabbing';
                     this.showInspector(clicked);
                 }
             });
 
-            window.addEventListener('mousemove', (e) => {
+            this.canvas.addEventListener('mousemove', (e) => {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
                 if (isDown && this.draggedNode) {
-                    const rect = this.canvas.getBoundingClientRect();
-                    this.draggedNode.x = (e.clientX - rect.left) - dragOffset.x;
-                    this.draggedNode.y = (e.clientY - rect.top) - dragOffset.y;
+                    this.draggedNode.x = x - dragOffset.x;
+                    this.draggedNode.y = y - dragOffset.y;
+                    this.canvas.style.cursor = 'grabbing';
+                } else {
+                    const hovered = this.findNodeAt(x, y);
+                    this.hoveredNode = hovered;
+                    this.canvas.style.cursor = hovered ? 'pointer' : 'default';
                 }
             });
 
             window.addEventListener('mouseup', () => {
                 isDown = false;
                 this.draggedNode = null;
+                if (this.canvas) this.canvas.style.cursor = this.hoveredNode ? 'pointer' : 'default';
             });
 
             const closeBtn = document.getElementById('close-inspector-btn');
             if (closeBtn) {
-                closeBtn.onclick = () => this.inspector.classList.add('hidden');
+                closeBtn.onclick = () => {
+                    this.inspector.classList.add('hidden');
+                    this.selectedNode = null;
+                };
             }
 
             const resetBtn = document.getElementById('btn-reset-graph');
@@ -551,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let i = this.nodes.length - 1; i >= 0; i--) {
                 const n = this.nodes[i];
                 const dist = Math.hypot(n.x - x, n.y - y);
-                if (dist <= n.radius + 8) return n;
+                if (dist <= n.radius + 10) return n;
             }
             return null;
         }
@@ -608,6 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
                 this.nodes.push(cleanNode);
                 this.edges.push({ source: rootNode, target: cleanNode, active: true, label: 'Secured' });
+                this.showInspector(cleanNode);
             } else {
                 keyFindings.forEach((f, idx) => {
                     const vY = height * (0.2 + (idx / Math.max(1, keyFindings.length - 1)) * 0.6);
@@ -615,6 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         id: `node-v-${idx}`,
                         label: f.title.length > 24 ? f.title.slice(0, 24) + '...' : f.title,
                         type: 'vuln',
+                        findingData: f,
                         x: width * 0.38 + (idx % 2 === 0 ? -20 : 20),
                         y: vY,
                         radius: 16,
@@ -694,6 +701,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 primNodes.forEach(pn => {
                     this.edges.push({ source: pn, target: impactNode, active: true, label: 'Compromises' });
                 });
+
+                // Auto-show inspector for the most critical/high node
+                this.showInspector(vulnNodes[0]);
             }
 
             this.spawnParticles();
@@ -774,11 +784,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Draw Edges
             this.edges.forEach(edge => {
+                const isHighlighted = (this.selectedNode && (edge.source === this.selectedNode || edge.target === this.selectedNode)) ||
+                                      (this.hoveredNode && (edge.source === this.hoveredNode || edge.target === this.hoveredNode));
+
                 ctx.beginPath();
                 ctx.moveTo(edge.source.x, edge.source.y);
                 ctx.lineTo(edge.target.x, edge.target.y);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-                ctx.lineWidth = 1.8;
+                ctx.strokeStyle = isHighlighted ? 'rgba(0, 255, 136, 0.45)' : 'rgba(255, 255, 255, 0.12)';
+                ctx.lineWidth = isHighlighted ? 2.5 : 1.8;
                 ctx.stroke();
 
                 // Arrow head
@@ -789,7 +802,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.save();
                 ctx.translate(arrowX, arrowY);
                 ctx.rotate(angle);
-                ctx.fillStyle = edge.target.color;
+                ctx.fillStyle = isHighlighted ? '#00ff88' : edge.target.color;
                 ctx.beginPath();
                 ctx.moveTo(0, 0);
                 ctx.lineTo(-6, -3.5);
@@ -816,12 +829,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Draw Nodes
             this.nodes.forEach(node => {
+                const isSelected = this.selectedNode === node;
+                const isHovered = this.hoveredNode === node;
+
                 ctx.save();
+
+                // Outer selection/hover ring
+                if (isSelected || isHovered) {
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, node.radius + 8, 0, Math.PI * 2);
+                    ctx.strokeStyle = isSelected ? '#00ff88' : 'rgba(255, 255, 255, 0.6)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 4]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
 
                 // Glow
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, node.radius + 5, 0, Math.PI * 2);
-                ctx.fillStyle = node.glow;
+                ctx.arc(node.x, node.y, node.radius + (isSelected ? 10 : 5), 0, Math.PI * 2);
+                ctx.fillStyle = isSelected ? 'rgba(0, 255, 136, 0.4)' : node.glow;
                 ctx.fill();
 
                 // Base circle
@@ -829,19 +856,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
                 ctx.fillStyle = '#0a0d14';
                 ctx.fill();
-                ctx.lineWidth = 2.5;
-                ctx.strokeStyle = node.color;
+                ctx.lineWidth = isSelected ? 3 : 2.5;
+                ctx.strokeStyle = isSelected ? '#00ff88' : node.color;
                 ctx.stroke();
 
                 // Center indicator dot
                 ctx.beginPath();
                 ctx.arc(node.x, node.y, 4, 0, Math.PI * 2);
-                ctx.fillStyle = node.color;
+                ctx.fillStyle = isSelected ? '#00ff88' : node.color;
                 ctx.fill();
 
                 // Text label
-                ctx.font = '11px Inter, sans-serif';
-                ctx.fillStyle = '#f0f4fc';
+                ctx.font = (isSelected || isHovered ? 'bold ' : '') + '11px Inter, sans-serif';
+                ctx.fillStyle = isSelected ? '#00ff88' : '#f0f4fc';
                 ctx.textAlign = 'center';
                 ctx.fillText(node.label, node.x, node.y + node.radius + 14);
 
@@ -850,20 +877,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         showInspector(node) {
+            this.selectedNode = node;
             this.inspector.classList.remove('hidden');
             const badge = document.getElementById('inspector-badge');
-            badge.textContent = node.type.toUpperCase();
-            badge.style.borderColor = node.color;
-            badge.style.color = node.color;
+            if (badge) {
+                badge.textContent = node.type.toUpperCase();
+                badge.style.borderColor = node.color;
+                badge.style.color = node.color;
+            }
 
-            document.getElementById('inspector-title').textContent = node.label;
-            document.getElementById('inspector-stage').textContent = node.stage;
-            document.getElementById('inspector-impact').textContent = node.impact;
-            document.getElementById('inspector-fix').textContent = node.fix;
+            const titleEl = document.getElementById('inspector-title');
+            const stageEl = document.getElementById('inspector-stage');
+            const impactEl = document.getElementById('inspector-impact');
+            const fixEl = document.getElementById('inspector-fix');
+            const patchBtn = document.getElementById('inspector-patch-btn');
+
+            if (titleEl) titleEl.textContent = node.label;
+            if (stageEl) stageEl.textContent = node.stage;
+            if (impactEl) impactEl.textContent = node.impact;
+            if (fixEl) fixEl.textContent = node.fix;
+
+            if (patchBtn) {
+                if (node.findingData) {
+                    patchBtn.classList.remove('hidden');
+                    patchBtn.onclick = () => openAutoPatchModal(node.findingData);
+                } else {
+                    patchBtn.classList.add('hidden');
+                }
+            }
         }
     }
 
-    // Initialize Threat Graph instance
+    // Initialize Threat Graph Canvas & Inspector
     const graphCanvas = document.getElementById('threat-graph-canvas');
     const graphInspector = document.getElementById('threat-node-inspector');
     if (graphCanvas && graphInspector) {
@@ -919,6 +964,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 infoClick.onclick = loadScanDetails;
                 historyList.appendChild(item);
             });
+
+            // Automatically auto-load the most recent scan if dashboard is idle
+            if (scans.length > 0 && resultsSection.classList.contains('hidden')) {
+                try {
+                    const firstScan = scans[0];
+                    const res = await fetch(`/vibe-shield-reports/${firstScan.scanId}/report.json`);
+                    if (res.ok) {
+                        const reportData = await res.json();
+                        displayResults({
+                            url: firstScan.url,
+                            duration: firstScan.duration,
+                            report: reportData,
+                            reportHtmlUrl: firstScan.reportHtmlUrl
+                        });
+                    }
+                } catch(e) {}
+            }
         } catch (e) {
             console.error('Failed to load history:', e);
         }
