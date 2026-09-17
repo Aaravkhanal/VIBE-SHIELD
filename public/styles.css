@@ -446,6 +446,167 @@ body {
     padding: 30px !important;
 }
 
+/* ═══════════════════════════════════════════════
+   Cyber Threat Map & Attack Graph
+   ═══════════════════════════════════════════════ */
+
+.threat-map-container {
+    background: rgba(8, 12, 20, 0.85);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    margin-bottom: 24px;
+    position: relative;
+    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.4);
+}
+
+.threat-map-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.threat-map-header h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.threat-map-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.threat-canvas-wrapper {
+    position: relative;
+    width: 100%;
+    height: 420px;
+    background: radial-gradient(circle at center, rgba(14, 22, 38, 0.8) 0%, #060910 100%);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+#threat-graph-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+}
+
+#threat-graph-canvas:active {
+    cursor: grabbing;
+}
+
+.threat-inspector {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 320px;
+    max-height: 390px;
+    background: rgba(14, 20, 32, 0.95);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--accent-green);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 255, 136, 0.2);
+    overflow-y: auto;
+    z-index: 10;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.inspector-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close-btn:hover {
+    color: var(--text-primary);
+}
+
+.threat-inspector h4 {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+
+.inspector-field {
+    margin-bottom: 10px;
+}
+
+.inspector-field label {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.inspector-val {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.inspector-val.code-block {
+    background: rgba(0, 0, 0, 0.5);
+    padding: 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    color: var(--accent-green);
+    font-size: 11px;
+    white-space: pre-wrap;
+    border: 1px solid rgba(0, 255, 136, 0.15);
+}
+
+.threat-legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.dot-surface { background: var(--accent-cyan); box-shadow: 0 0 6px var(--accent-cyan); }
+.dot-vuln { background: var(--accent-amber); box-shadow: 0 0 6px var(--accent-amber); }
+.dot-primitive { background: var(--accent-purple); box-shadow: 0 0 6px var(--accent-purple); }
+.dot-impact { background: var(--accent-red); box-shadow: 0 0 6px var(--accent-red); }
+
 /* History */
 .history-list {
     display: flex;

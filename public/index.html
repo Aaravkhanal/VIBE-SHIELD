@@ -204,6 +204,51 @@
                         </div>
                     </div>
 
+                    <!-- Attack Vector Chaining Graph (Cyber Threat Map) -->
+                    <div class="threat-map-container">
+                        <div class="threat-map-header">
+                            <div>
+                                <h3>🕸️ Interactive Attack Vector Chaining Graph</h3>
+                                <p class="subtitle">Multi-stage exploit paths modeled from correlated vulnerability primitives</p>
+                            </div>
+                            <div class="threat-map-controls">
+                                <button type="button" id="btn-reset-graph" class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;">Reset View</button>
+                                <button type="button" id="btn-pulse-paths" class="btn btn-primary" style="padding: 6px 12px; font-size: 11px;">Simulate Exploit Trajectory ⚡</button>
+                            </div>
+                        </div>
+                        
+                        <div class="threat-canvas-wrapper">
+                            <canvas id="threat-graph-canvas"></canvas>
+                            <div id="threat-node-inspector" class="threat-inspector hidden">
+                                <div class="inspector-header">
+                                    <span id="inspector-badge" class="badge">THREAT NODE</span>
+                                    <button type="button" id="close-inspector-btn" class="close-btn">×</button>
+                                </div>
+                                <h4 id="inspector-title">Node Title</h4>
+                                <div class="inspector-field">
+                                    <label>STAGE IN EXPLOIT CHAIN</label>
+                                    <div id="inspector-stage" class="inspector-val">Initial Access</div>
+                                </div>
+                                <div class="inspector-field">
+                                    <label>EXPLOITATION MECHANISM & IMPACT</label>
+                                    <div id="inspector-impact" class="inspector-val">Description</div>
+                                </div>
+                                <div class="inspector-field">
+                                    <label>PREVENTION & DEFENSE FIX</label>
+                                    <div id="inspector-fix" class="inspector-val code-block">Code Fix</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Legend -->
+                        <div class="threat-legend">
+                            <div class="legend-item"><span class="legend-dot dot-surface"></span> <span>Target Entry Point</span></div>
+                            <div class="legend-item"><span class="legend-dot dot-vuln"></span> <span>Vulnerability Finding</span></div>
+                            <div class="legend-item"><span class="legend-dot dot-primitive"></span> <span>Exploitation Primitive</span></div>
+                            <div class="legend-item"><span class="legend-dot dot-impact"></span> <span>Compounded Threat Impact</span></div>
+                        </div>
+                    </div>
+
                     <!-- Findings Table -->
                     <div class="table-responsive">
                         <table class="findings-table">

@@ -36,7 +36,7 @@ export class ReportGenerator {
   /**
    * Generate all reports from findings and test results.
    */
-  async generate({ findings, deduplicated, dedupStats, testSummary, surfaceInventory, outputDir, modules }) {
+  async generate({ findings, deduplicated, dedupStats, correlations, testSummary, surfaceInventory, outputDir, modules }) {
     const reportDir = outputDir || path.join(process.cwd(), 'vibe-shield-reports', this._timestamp());
     if (!fs.existsSync(reportDir)) {
       fs.mkdirSync(reportDir, { recursive: true });
@@ -73,6 +73,7 @@ export class ReportGenerator {
       summary,
       dedupSummary,
       dedupStats: dedupStats || null,
+      correlations: correlations || [],
       testSummary: testSummary || {},
       surfaceInventory: {
         totalPages: surfaceInventory?.totalPages || 0,

@@ -261,6 +261,7 @@ async function runScan(rawUrl, options, modulesToRun) {
             findings: results.findings,
             deduplicated: results.deduplicated,
             dedupStats: results.dedupStats,
+            correlations: results.correlations,
             testSummary: { ...testSummary, duration },
             surfaceInventory: results.surfaceInventory,
             outputDir: config.output_dir,
