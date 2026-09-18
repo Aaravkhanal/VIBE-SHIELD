@@ -469,6 +469,71 @@
                 </div>
             </section>
 
+            <!-- Historical Security Score Trend Chart Card -->
+            <section class="card trend-card" id="trend-section">
+                <div class="card-header trend-header">
+                    <div>
+                        <h2>📈 Continuous Security Posture Trend</h2>
+                        <p class="subtitle" id="trend-subtitle">Historical score velocity & vulnerability remediation trajectory over time</p>
+                    </div>
+                    <div class="trend-controls">
+                        <!-- KPI Metric Badges -->
+                        <div class="trend-kpis">
+                            <div class="trend-kpi-pill">
+                                <span class="kpi-label">SCORE VELOCITY</span>
+                                <span class="kpi-val" id="kpi-velocity">+14% ↗</span>
+                            </div>
+                            <div class="trend-kpi-pill">
+                                <span class="kpi-label">REMEDIATION STATUS</span>
+                                <span class="kpi-val" id="kpi-status" style="color: var(--accent-green);">Hardening 🟢</span>
+                            </div>
+                        </div>
+                        <div class="terminal-filters" id="trend-metric-toggles">
+                            <button type="button" class="terminal-filter-btn active" data-metric="overall">Overall Score</button>
+                            <button type="button" class="terminal-filter-btn" data-metric="headers">🛡️ Perimeter</button>
+                            <button type="button" class="terminal-filter-btn" data-metric="ai">🤖 AI Safety</button>
+                            <button type="button" class="terminal-filter-btn" data-metric="api">🔑 API Auth</button>
+                            <button type="button" class="terminal-filter-btn" data-metric="logic">⚖️ Logic</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trend Chart Canvas Wrapper -->
+                <div class="trend-chart-wrapper" id="trend-chart-wrapper">
+                    <canvas id="trend-chart-canvas"></canvas>
+                    <div id="trend-chart-tooltip" class="trend-tooltip hidden">
+                        <div class="trend-tooltip-head">
+                            <span id="tt-date" class="tt-date">2026-09-17 03:51</span>
+                            <span id="tt-grade" class="badge">GRADE A</span>
+                        </div>
+                        <div class="trend-tooltip-score">
+                            <span id="tt-score-val" class="tt-score">94</span><span class="tt-max">/100</span>
+                        </div>
+                        <div class="trend-tooltip-details" id="tt-details">
+                            <div>Target: <span id="tt-target" style="color: var(--accent-cyan);">jubidate-ai.vercel.app</span></div>
+                            <div>Findings: <span id="tt-findings">42 total</span></div>
+                            <div>Duration: <span id="tt-duration">79.2s</span></div>
+                        </div>
+                        <button type="button" id="tt-inspect-btn" class="btn btn-secondary" style="width: 100%; margin-top: 8px; font-size: 10px; padding: 4px 8px;">
+                            Inspect This Scan ↗
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Trend Legend / Summary Bar -->
+                <div class="trend-bottom-bar">
+                    <div class="trend-metric-legend">
+                        <span class="t-legend-item"><span class="t-dot" style="background: var(--accent-green);"></span> <span>Overall Security Posture (0-100)</span></span>
+                        <span class="t-legend-item"><span class="t-dot" style="background: var(--accent-cyan);"></span> <span>Perimeter & Headers</span></span>
+                        <span class="t-legend-item"><span class="t-dot" style="background: var(--accent-purple);"></span> <span>AI & Prompt Defense</span></span>
+                        <span class="t-legend-item"><span class="t-dot" style="background: var(--accent-amber);"></span> <span>API & Auth Hardening</span></span>
+                    </div>
+                    <div id="trend-timeline-summary" class="trend-summary-text">
+                        Showing posture evolution across latest scans
+                    </div>
+                </div>
+            </section>
+
             <!-- Scan History Section -->
             <section class="card history-card">
                 <div class="card-header">

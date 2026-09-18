@@ -49,12 +49,19 @@ function initScanHistoryFromDisk() {
             if (fs.existsSync(jsonPath)) {
                 try {
                     const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+                    const scoreData = calculateSecurityScore(data);
                     scanHistory.push({
                         scanId: dir,
                         url: data.meta?.target || 'Unknown',
                         timestamp: data.meta?.scannedAt || fs.statSync(jsonPath).mtime.toISOString(),
                         duration: data.meta?.duration ? (data.meta.duration / 1000).toFixed(1) : '0',
                         findingsCount: data.dedupSummary?.total ?? data.summary?.total ?? 0,
+                        score: scoreData.overallScore,
+                        grade: scoreData.grade,
+                        gradeColor: scoreData.gradeColor,
+                        statusText: scoreData.statusText,
+                        subscores: scoreData.subCategories,
+                        summary: data.dedupSummary || data.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 },
                         reportHtmlUrl: `/vibe-shield-reports/${dir}/report.html`
                     });
                 } catch (e) {
@@ -234,13 +241,20 @@ const server = http.createServer((req, res) => {
                     }
 
                     // Save to history (cap at 50 entries to prevent unbounded memory growth)
+                    const scoreData = scanData.report ? calculateSecurityScore(scanData.report) : { overallScore: 90, grade: 'A', gradeColor: '#00ff88', statusText: 'Protected' };
                     if (scanHistory.length >= 50) scanHistory.pop();
                     scanHistory.unshift({
                         scanId,
                         url: targetUrl,
                         timestamp: new Date().toISOString(),
                         duration: scanData.duration,
-                        findingsCount: scanData.report?.summary?.total || 0,
+                        findingsCount: scanData.report?.dedupSummary?.total ?? scanData.report?.summary?.total ?? 0,
+                        score: scoreData.overallScore,
+                        grade: scoreData.grade,
+                        gradeColor: scoreData.gradeColor,
+                        statusText: scoreData.statusText,
+                        subscores: scoreData.subCategories || null,
+                        summary: scanData.report?.dedupSummary || scanData.report?.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 },
                         reportHtmlUrl: scanData.reportHtmlUrl
                     });
 
@@ -338,6 +352,19 @@ const server = http.createServer((req, res) => {
     if (pathname === '/api/scans/history' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify(scanHistory.slice(0, 20)));
+    }
+
+    // API: Get Historical Score Trends
+    if (pathname === '/api/scans/trends' && req.method === 'GET') {
+        const targetFilter = parsedUrl.searchParams.get('url');
+        let list = [...scanHistory];
+        if (targetFilter) {
+            list = list.filter(s => s.url === targetFilter || s.url.includes(targetFilter));
+        }
+        // Chronological order for time series chart (oldest to newest)
+        list.reverse();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(list));
     }
 
     // API: Dynamic SVG Security Badge
