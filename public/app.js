@@ -506,38 +506,472 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFindingsTable(report.findings || []);
     }
 
+    // ═══════════════════════════════════════════════
+    // CVSS v3.1 Quantitative Scoring Engine & Specification
+    // ═══════════════════════════════════════════════
+    const CVSS_SPEC = {
+        AV: {
+            N: { val: 0.85, label: 'Network (N)', desc: 'Remotely exploitable across the public Internet' },
+            A: { val: 0.62, label: 'Adjacent (A)', desc: 'Requires adjacent local subnet/bluetooth access' },
+            L: { val: 0.55, label: 'Local (L)', desc: 'Requires local interactive shell or local script run' },
+            P: { val: 0.20, label: 'Physical (P)', desc: 'Requires physical access to host hardware' }
+        },
+        AC: {
+            L: { val: 0.77, label: 'Low (L)', desc: 'No specialized conditions; easily repeatable' },
+            H: { val: 0.44, label: 'High (H)', desc: 'Requires complex prerequisites, race conditions, or bypasses' }
+        },
+        PR: {
+            N: { valU: 0.85, valC: 0.85, label: 'None (N)', desc: 'Unauthenticated unauthorized attacker' },
+            L: { valU: 0.62, valC: 0.68, label: 'Low (L)', desc: 'Standard user privileges required' },
+            H: { valU: 0.27, valC: 0.50, label: 'High (H)', desc: 'Administrative / superuser privileges required' }
+        },
+        UI: {
+            N: { val: 0.85, label: 'None (N)', desc: 'Zero victim interaction required' },
+            R: { val: 0.62, label: 'Required (R)', desc: 'Victim must perform an action (click link, accept auth)' }
+        },
+        S: {
+            U: { label: 'Unchanged (U)', desc: 'Impacts only the immediate vulnerable software component' },
+            C: { label: 'Changed (C)', desc: 'Escapes security boundary (sandbox escape, SSRF, host control)' }
+        },
+        C: {
+            N: { val: 0.0, label: 'None (N)', desc: 'Zero confidentiality impact' },
+            L: { val: 0.22, label: 'Low (L)', desc: 'Minor disclosure of non-sensitive metadata' },
+            H: { val: 0.56, label: 'High (H)', desc: 'Total confidentiality loss / exfiltration of credentials & DB' }
+        },
+        I: {
+            N: { val: 0.0, label: 'None (N)', desc: 'Zero integrity impact' },
+            L: { val: 0.22, label: 'Low (L)', desc: 'Modification of minor non-critical state' },
+            H: { val: 0.56, label: 'High (H)', desc: 'Total compromise of state / arbitrary code/command modification' }
+        },
+        A: {
+            N: { val: 0.0, label: 'None (N)', desc: 'Zero availability impact' },
+            L: { val: 0.22, label: 'Low (L)', desc: 'Intermittent degradation or partial rate-limiting' },
+            H: { val: 0.56, label: 'High (H)', desc: 'Total denial of service / host crash' }
+        }
+    };
+
+    function cvssRoundup(val) {
+        const intVal = Math.round(val * 100000);
+        if (intVal % 10000 === 0) return intVal / 100000;
+        return (Math.floor(intVal / 10000) + 1) / 10;
+    }
+
+    function calculateCvssClient(metrics) {
+        const av = (metrics.AV || 'N').toUpperCase();
+        const ac = (metrics.AC || 'L').toUpperCase();
+        const pr = (metrics.PR || 'N').toUpperCase();
+        const ui = (metrics.UI || 'N').toUpperCase();
+        const s = (metrics.S || 'U').toUpperCase();
+        const c = (metrics.C || 'H').toUpperCase();
+        const i = (metrics.I || 'H').toUpperCase();
+        const a = (metrics.A || 'N').toUpperCase();
+
+        const avVal = CVSS_SPEC.AV[av]?.val ?? 0.85;
+        const acVal = CVSS_SPEC.AC[ac]?.val ?? 0.77;
+        const isChanged = s === 'C';
+        const prVal = isChanged ? (CVSS_SPEC.PR[pr]?.valC ?? 0.85) : (CVSS_SPEC.PR[pr]?.valU ?? 0.85);
+        const uiVal = CVSS_SPEC.UI[ui]?.val ?? 0.85;
+
+        const cVal = CVSS_SPEC.C[c]?.val ?? 0.0;
+        const iVal = CVSS_SPEC.I[i]?.val ?? 0.0;
+        const aVal = CVSS_SPEC.A[a]?.val ?? 0.0;
+
+        const exploitability = 8.22 * avVal * acVal * prVal * uiVal;
+        const iss = 1 - ((1 - cVal) * (1 - iVal) * (1 - aVal));
+
+        let impact = 0;
+        if (isChanged) {
+            impact = 7.52 * (iss - 0.029) - 3.25 * Math.pow(iss - 0.02, 15);
+        } else {
+            impact = 6.42 * iss;
+        }
+
+        let baseScore = 0.0;
+        if (impact <= 0) {
+            baseScore = 0.0;
+        } else if (!isChanged) {
+            baseScore = cvssRoundup(Math.min(impact + exploitability, 10));
+        } else {
+            baseScore = cvssRoundup(Math.min(1.08 * (impact + exploitability), 10));
+        }
+        baseScore = Math.max(0.0, Math.min(10.0, baseScore));
+
+        let severity = 'NONE';
+        let color = '#738a9c';
+        let qualDesc = 'No significant security impact detected.';
+        if (baseScore >= 9.0) {
+            severity = 'CRITICAL';
+            color = '#ff3366';
+            qualDesc = 'Vulnerability is remotely exploitable with catastrophic impact across systems.';
+        } else if (baseScore >= 7.0) {
+            severity = 'HIGH';
+            color = '#ff9900';
+            qualDesc = 'Significant impact to data confidentiality, system integrity, or availability.';
+        } else if (baseScore >= 4.0) {
+            severity = 'MEDIUM';
+            color = '#ffcc00';
+            qualDesc = 'Moderate threat requiring specific preconditions or partial exposure.';
+        } else if (baseScore >= 0.1) {
+            severity = 'LOW';
+            color = '#00f0ff';
+            qualDesc = 'Minor threat requiring elevated privileges or high user interaction.';
+        }
+
+        const vectorString = `CVSS:3.1/AV:${av}/AC:${ac}/PR:${pr}/UI:${ui}/S:${s}/C:${c}/I:${i}/A:${a}`;
+
+        return {
+            score: baseScore.toFixed(1),
+            numericScore: baseScore,
+            severity,
+            color,
+            qualDesc,
+            vectorString,
+            exploitabilityScore: (Math.round(exploitability * 10) / 10).toFixed(1),
+            impactScore: (Math.max(0, Math.round(impact * 10) / 10)).toFixed(1),
+            rawMetrics: { AV: av, AC: ac, PR: pr, UI: ui, S: s, C: c, I: i, A: a }
+        };
+    }
+
+    function parseCvssVectorClient(vectorString) {
+        if (!vectorString || typeof vectorString !== 'string') {
+            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'H' });
+        }
+        const metrics = {};
+        const parts = vectorString.split('/');
+        for (const part of parts) {
+            const [k, v] = part.split(':');
+            if (k && v && ['AV', 'AC', 'PR', 'UI', 'S', 'C', 'I', 'A'].includes(k.toUpperCase())) {
+                metrics[k.toUpperCase()] = v.toUpperCase();
+            }
+        }
+        return calculateCvssClient(metrics);
+    }
+
+    function inferCvssClient(finding) {
+        if (finding.cvss && finding.cvss.vectorString) {
+            return parseCvssVectorClient(finding.cvss.vectorString);
+        }
+        const title = (finding.title || '').toLowerCase();
+        const desc = (finding.description || '').toLowerCase();
+        const sev = (finding.severity || 'low').toLowerCase();
+
+        if (title.includes('prompt injection') || title.includes('jailbreak') || title.includes('system prompt')) {
+            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'C', C: 'H', I: 'H', A: 'N' });
+        }
+        if (title.includes('sql injection') || title.includes('sqli')) {
+            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'H' });
+        }
+        if (title.includes('ssrf') || title.includes('server-side request forgery')) {
+            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'C', C: 'H', I: 'L', A: 'N' });
+        }
+        if (title.includes('cors') || title.includes('origin')) {
+            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'H', I: 'L', A: 'N' });
+        }
+        if (title.includes('api key') || title.includes('secret') || title.includes('token') || title.includes('credential')) {
+            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'N', A: 'N' });
+        }
+        if (title.includes('rate limit') || title.includes('dos') || title.includes('denial of service')) {
+            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'N', I: 'N', A: 'H' });
+        }
+        if (title.includes('content-security-policy') || title.includes('csp') || title.includes('hsts') || title.includes('header')) {
+            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'L', A: 'N' });
+        }
+        if (title.includes('cookie') || title.includes('httponly') || title.includes('samesite')) {
+            return calculateCvssClient({ AV: 'N', AC: 'H', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'N', A: 'N' });
+        }
+        if (title.includes('auth') || title.includes('jwt') || title.includes('bypass')) {
+            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'N' });
+        }
+
+        switch (sev) {
+            case 'critical': return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'H' });
+            case 'high': return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'N', A: 'N' });
+            case 'medium': return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'L', A: 'N' });
+            case 'low': return calculateCvssClient({ AV: 'N', AC: 'H', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'N', A: 'N' });
+            default: return calculateCvssClient({ AV: 'N', AC: 'H', PR: 'L', UI: 'R', S: 'U', C: 'N', I: 'N', A: 'N' });
+        }
+    }
+
+    // ═══════════════════════════════════════════════
+    // Findings Table Rendering
+    // ═══════════════════════════════════════════════
+
     function renderFindingsTable(findings) {
         const tbody = document.getElementById('findings-table-body');
         if (!tbody) return;
         tbody.innerHTML = '';
 
         if (!findings || findings.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" class="empty-state">🎉 Clean Scan! No findings at configured threshold.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="empty-state">🎉 Clean Scan! No findings at configured threshold.</td></tr>`;
             return;
         }
 
         findings.forEach((f, idx) => {
             const tr = document.createElement('tr');
-            const sevClass = 'pill-' + (f.severity || 'low');
+            const sev = (f.severity || 'low').toLowerCase();
+            const sevClass = 'pill-' + sev;
+            const cvssData = f.cvss || inferCvssClient(f);
+            f.cvss = cvssData; // Cache on finding object
+
+            const cvssPillClass = 'cvss-' + (cvssData.severity ? cvssData.severity.toLowerCase() : sev);
+            const scoreDisplay = cvssData.score || '0.0';
             const remediationText = f.remediation || f.description || 'Review application code and enforce strict input validation.';
+
             tr.innerHTML = `
-                <td><span class="badge ${sevClass}">${(f.severity || 'LOW').toUpperCase()}</span></td>
-                <td><strong>${escapeHtml(f.title)}</strong></td>
+                <td>
+                    <button type="button" class="cvss-score-pill ${cvssPillClass} open-cvss-btn" data-finding-index="${idx}" title="Open Interactive CVSS v3.1 Calculator">
+                        🎯 ${scoreDisplay}
+                    </button>
+                </td>
+                <td><span class="badge ${sevClass}">${sev.toUpperCase()}</span></td>
+                <td>
+                    <strong>${escapeHtml(f.title)}</strong>
+                    <span class="cvss-vector-snippet open-cvss-btn" data-finding-index="${idx}" title="Click to inspect CVSS metrics">
+                        ${escapeHtml(cvssData.vectorString || 'CVSS:3.1/...')}
+                    </span>
+                </td>
                 <td><code>${escapeHtml(f.agent || 'VIBE-SHIELD')}</code></td>
                 <td>${escapeHtml(f.affected_surface || 'N/A')}</td>
                 <td>${escapeHtml(f.owasp?.id || f.owasp || 'A01:2021')}</td>
                 <td style="max-width: 380px;">
-                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">${escapeHtml(remediationText)}</div>
-                    <button type="button" class="btn-patch-action auto-patch-btn" data-finding-index="${idx}">
-                        ⚡ Auto-Patch Code
-                    </button>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">${escapeHtml(remediationText)}</div>
+                    <div class="actions-cell-wrap">
+                        <button type="button" class="btn-cvss-action open-cvss-btn" data-finding-index="${idx}">
+                            🎯 CVSS Calc
+                        </button>
+                        <button type="button" class="btn-patch-action auto-patch-btn" data-finding-index="${idx}">
+                            ⚡ Auto-Patch Code
+                        </button>
+                    </div>
                 </td>
             `;
 
+            // Wire CVSS Modal triggers
+            tr.querySelectorAll('.open-cvss-btn').forEach(btn => {
+                btn.onclick = () => openCvssModal(f);
+            });
+
+            // Wire Patch Modal trigger
             const patchBtn = tr.querySelector('.auto-patch-btn');
             if (patchBtn) patchBtn.onclick = () => openAutoPatchModal(f);
+
             tbody.appendChild(tr);
         });
+    }
+
+    // ═══════════════════════════════════════════════
+    // CVSS v3.1 Interactive Modal Logic
+    // ═══════════════════════════════════════════════
+
+    const cvssModal = document.getElementById('cvss-modal');
+    const closeCvssModalBtn = document.getElementById('close-cvss-modal-btn');
+    const openCvssLabHeaderBtn = document.getElementById('open-cvss-lab-btn');
+    const cvssFindingTitle = document.getElementById('cvss-finding-title');
+    const cvssScoreRing = document.getElementById('cvss-score-ring');
+    const cvssScoreNum = document.getElementById('cvss-score-num');
+    const cvssSeverityBadge = document.getElementById('cvss-severity-badge');
+    const cvssQualitativeDesc = document.getElementById('cvss-qualitative-desc');
+    const cvssExploitScore = document.getElementById('cvss-exploit-score');
+    const cvssExploitBar = document.getElementById('cvss-exploit-bar');
+    const cvssImpactScore = document.getElementById('cvss-impact-score');
+    const cvssImpactBar = document.getElementById('cvss-impact-bar');
+    const cvssVectorString = document.getElementById('cvss-vector-string');
+    const cvssCopyVectorBtn = document.getElementById('cvss-copy-vector-btn');
+    const cvssCopyVectorText = document.getElementById('cvss-copy-vector-text');
+    const cvssCopyJsonBtn = document.getElementById('cvss-copy-json-btn');
+
+    let currentCvssMetrics = {
+        AV: 'N',
+        AC: 'L',
+        PR: 'N',
+        UI: 'N',
+        S: 'U',
+        C: 'H',
+        I: 'H',
+        A: 'H'
+    };
+    let activeCvssFinding = null;
+
+    if (closeCvssModalBtn) {
+        closeCvssModalBtn.onclick = () => cvssModal.classList.add('hidden');
+    }
+    if (cvssModal) {
+        cvssModal.addEventListener('click', (e) => {
+            if (e.target === cvssModal) cvssModal.classList.add('hidden');
+        });
+    }
+    if (openCvssLabHeaderBtn) {
+        openCvssLabHeaderBtn.onclick = () => {
+            openCvssModal({
+                title: 'Custom Vulnerability Threat Assessment',
+                cvss: calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'C', C: 'H', I: 'H', A: 'N' })
+            });
+        };
+    }
+
+    const CVSS_PRESETS = {
+        'prompt-injection': { AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'C', C: 'H', I: 'H', A: 'N', title: 'Prompt Injection / Agent Hijacking' },
+        'sqli': { AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'H', title: 'SQL Injection Data Breach' },
+        'ssrf': { AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'C', C: 'H', I: 'L', A: 'N', title: 'SSRF Cloud Metadata Exfiltration' },
+        'secrets': { AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'N', A: 'N', title: 'Hardcoded API Token / Private Key Exposure' },
+        'cors': { AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'H', I: 'L', A: 'N', title: 'Wildcard CORS with Authenticated Credentials' },
+        'headers': { AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'L', A: 'N', title: 'Missing Content-Security-Policy & HSTS' },
+        'cookie': { AV: 'N', AC: 'H', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'N', A: 'N', title: 'Insecure Session Cookie (Missing HttpOnly/Secure)' }
+    };
+
+    // Attach preset buttons
+    document.querySelectorAll('.btn-cvss-preset').forEach(btn => {
+        btn.onclick = () => {
+            const presetKey = btn.dataset.preset;
+            if (CVSS_PRESETS[presetKey]) {
+                const p = CVSS_PRESETS[presetKey];
+                currentCvssMetrics = {
+                    AV: p.AV, AC: p.AC, PR: p.PR, UI: p.UI,
+                    S: p.S, C: p.C, I: p.I, A: p.A
+                };
+                if (cvssFindingTitle) cvssFindingTitle.textContent = p.title;
+                updateCvssModalUi();
+            }
+        };
+    });
+
+    // Attach metric toggle buttons
+    document.querySelectorAll('.cvss-metric-group').forEach(group => {
+        const metric = group.dataset.metric;
+        group.querySelectorAll('.btn-metric').forEach(btn => {
+            btn.onclick = () => {
+                const val = btn.dataset.val;
+                currentCvssMetrics[metric] = val;
+                updateCvssModalUi();
+            };
+        });
+    });
+
+    function openCvssModal(finding) {
+        if (!cvssModal) return;
+        activeCvssFinding = finding;
+        cvssModal.classList.remove('hidden');
+
+        if (finding && finding.title) {
+            cvssFindingTitle.textContent = finding.title;
+        } else {
+            cvssFindingTitle.textContent = 'CVSS v3.1 Quantitative Score Calculator';
+        }
+
+        const calculated = finding?.cvss?.rawMetrics 
+            ? finding.cvss 
+            : inferCvssClient(finding || {});
+
+        currentCvssMetrics = { ...calculated.rawMetrics };
+        updateCvssModalUi();
+    }
+
+    function updateCvssModalUi() {
+        const result = calculateCvssClient(currentCvssMetrics);
+
+        // Update Gauge & Numbers
+        if (cvssScoreNum) cvssScoreNum.textContent = result.score;
+        if (cvssScoreRing) {
+            cvssScoreRing.style.borderColor = result.color;
+            cvssScoreRing.style.boxShadow = `0 0 25px ${result.color}55`;
+            cvssScoreRing.style.background = `radial-gradient(circle, ${result.color}22 0%, rgba(13, 18, 29, 0.9) 70%)`;
+        }
+
+        if (cvssSeverityBadge) {
+            cvssSeverityBadge.className = `badge badge-${result.severity.toLowerCase()}`;
+            cvssSeverityBadge.textContent = result.severity;
+            cvssSeverityBadge.style.borderColor = result.color;
+            cvssSeverityBadge.style.color = result.color;
+            cvssSeverityBadge.style.background = `${result.color}20`;
+        }
+
+        if (cvssQualitativeDesc) {
+            cvssQualitativeDesc.textContent = result.qualDesc;
+        }
+
+        // Subscores
+        if (cvssExploitScore) cvssExploitScore.textContent = `${result.exploitabilityScore} / 3.9`;
+        if (cvssExploitBar) {
+            const expPct = Math.min(100, (parseFloat(result.exploitabilityScore) / 3.9) * 100);
+            cvssExploitBar.style.width = `${expPct.toFixed(0)}%`;
+        }
+
+        if (cvssImpactScore) cvssImpactScore.textContent = `${result.impactScore} / 6.0`;
+        if (cvssImpactBar) {
+            const impPct = Math.min(100, (parseFloat(result.impactScore) / 6.0) * 100);
+            cvssImpactBar.style.width = `${impPct.toFixed(0)}%`;
+        }
+
+        // Vector String
+        if (cvssVectorString) {
+            cvssVectorString.textContent = result.vectorString;
+        }
+
+        // Update Metric Buttons & Active States
+        document.querySelectorAll('.cvss-metric-group').forEach(group => {
+            const metric = group.dataset.metric;
+            const currentVal = currentCvssMetrics[metric];
+            const descEl = document.getElementById(`desc-${metric}`);
+            
+            if (CVSS_SPEC[metric] && CVSS_SPEC[metric][currentVal] && descEl) {
+                descEl.textContent = CVSS_SPEC[metric][currentVal].desc || '';
+            }
+
+            group.querySelectorAll('.btn-metric').forEach(btn => {
+                if (btn.dataset.val === currentVal) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        });
+
+        // If finding was active, sync back updated score
+        if (activeCvssFinding) {
+            activeCvssFinding.cvss = result;
+        }
+    }
+
+    // Copy Vector String
+    if (cvssCopyVectorBtn) {
+        cvssCopyVectorBtn.onclick = async () => {
+            const vec = cvssVectorString?.textContent || '';
+            try {
+                await navigator.clipboard.writeText(vec);
+                if (cvssCopyVectorText) cvssCopyVectorText.textContent = 'Copied! ✓';
+                cvssCopyVectorBtn.style.color = 'var(--accent-green)';
+                setTimeout(() => {
+                    if (cvssCopyVectorText) cvssCopyVectorText.textContent = 'Copy Vector';
+                    cvssCopyVectorBtn.style.color = '';
+                }, 2000);
+            } catch(e) {}
+        };
+    }
+
+    // Copy JSON Representation
+    if (cvssCopyJsonBtn) {
+        cvssCopyJsonBtn.onclick = async () => {
+            const result = calculateCvssClient(currentCvssMetrics);
+            const payload = JSON.stringify({
+                version: '3.1',
+                vectorString: result.vectorString,
+                baseScore: parseFloat(result.score),
+                baseSeverity: result.severity,
+                exploitabilityScore: parseFloat(result.exploitabilityScore),
+                impactScore: parseFloat(result.impactScore),
+                metrics: currentCvssMetrics
+            }, null, 2);
+
+            try {
+                await navigator.clipboard.writeText(payload);
+                cvssCopyJsonBtn.textContent = 'JSON Copied! ✓';
+                cvssCopyJsonBtn.style.color = 'var(--accent-green)';
+                setTimeout(() => {
+                    cvssCopyJsonBtn.textContent = '📦 Copy JSON';
+                    cvssCopyJsonBtn.style.color = '';
+                }, 2000);
+            } catch(e) {}
+        };
     }
 
     // ═══════════════════════════════════════════════

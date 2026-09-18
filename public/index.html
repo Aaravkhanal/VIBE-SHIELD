@@ -21,11 +21,14 @@
                 </div>
             </div>
             <div class="history-status" style="display:flex;align-items:center;gap:12px;">
-                        <span class="header-status">
-                            <span class="status-indicator active"></span>
-                            <span class="status-text">Multi-Agent System Ready</span>
-                        </span>
-                    </div>
+                <button type="button" id="open-cvss-lab-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 12px; border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.08);">
+                    <span class="btn-icon">🎯</span> CVSS v3.1 Lab
+                </button>
+                <span class="header-status">
+                    <span class="status-indicator active"></span>
+                    <span class="status-text">Multi-Agent System Ready</span>
+                </span>
+            </div>
         </header>
 
         <!-- Main Content Area -->
@@ -423,17 +426,18 @@
                         <table class="findings-table">
                             <thead>
                                 <tr>
+                                    <th>CVSS v3.1</th>
                                     <th>Severity</th>
-                                    <th>Title</th>
+                                    <th>Vulnerability Title & Vector</th>
                                     <th>Agent Module</th>
                                     <th>Affected Surface</th>
                                     <th>OWASP Category</th>
-                                    <th>Remediation & Fix Guidance</th>
+                                    <th>Remediation & Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="findings-table-body">
                                 <tr>
-                                    <td colspan="6" class="empty-state">No findings detected yet.</td>
+                                    <td colspan="7" class="empty-state">No findings detected yet.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -583,6 +587,212 @@
                         </button>
                     </div>
                     <pre><code id="patch-code-content" class="code-content">// Generating patch...</code></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CVSS v3.1 Quantitative Score Calculator Modal -->
+    <div id="cvss-modal" class="modal-backdrop hidden">
+        <div class="modal-card cvss-modal-card">
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <span class="badge badge-cvss-tag">🎯 CVSS v3.1 QUANTITATIVE SCORING ENGINE</span>
+                    <h3 id="cvss-finding-title">CVSS v3.1 Base Score Calculator</h3>
+                </div>
+                <button type="button" id="close-cvss-modal-btn" class="close-btn">×</button>
+            </div>
+
+            <div class="modal-body cvss-modal-body">
+                <!-- Score Output Overview -->
+                <div class="cvss-score-banner">
+                    <div class="cvss-score-gauge-wrap">
+                        <div class="cvss-score-ring" id="cvss-score-ring">
+                            <span id="cvss-score-num" class="cvss-score-num">9.8</span>
+                            <span class="cvss-score-max">/10.0</span>
+                        </div>
+                        <div class="cvss-score-meta">
+                            <span id="cvss-severity-badge" class="badge badge-critical">CRITICAL</span>
+                            <div class="cvss-qualitative-label" id="cvss-qualitative-desc">Vulnerability is remotely exploitable with catastrophic impact</div>
+                        </div>
+                    </div>
+
+                    <div class="cvss-subscores-grid">
+                        <div class="cvss-subscore-card">
+                            <div class="subscore-head">
+                                <span>Exploitability Subscore</span>
+                                <strong id="cvss-exploit-score">3.9 / 3.9</strong>
+                            </div>
+                            <div class="subscore-bar-bg">
+                                <div id="cvss-exploit-bar" class="subscore-bar-fill" style="width: 100%;"></div>
+                            </div>
+                            <span class="subscore-hint">Ease and prerequisites of exploitation</span>
+                        </div>
+
+                        <div class="cvss-subscore-card">
+                            <div class="subscore-head">
+                                <span>Impact Subscore</span>
+                                <strong id="cvss-impact-score">5.9 / 6.0</strong>
+                            </div>
+                            <div class="subscore-bar-bg">
+                                <div id="cvss-impact-bar" class="subscore-bar-fill" style="width: 98%;"></div>
+                            </div>
+                            <span class="subscore-hint">Direct damage to Confidentiality, Integrity, Availability</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vector String Box -->
+                <div class="cvss-vector-container">
+                    <div class="cvss-vector-header">
+                        <label>OFFICIAL CVSS v3.1 VECTOR SPECIFICATION</label>
+                        <div class="cvss-vector-actions">
+                            <button type="button" id="cvss-copy-vector-btn" class="btn btn-secondary btn-mini">
+                                📋 <span id="cvss-copy-vector-text">Copy Vector</span>
+                            </button>
+                            <button type="button" id="cvss-copy-json-btn" class="btn btn-secondary btn-mini">
+                                📦 Copy JSON
+                            </button>
+                        </div>
+                    </div>
+                    <div class="cvss-vector-display">
+                        <code id="cvss-vector-string">CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</code>
+                    </div>
+                </div>
+
+                <!-- Threat Modeling Preset Buttons -->
+                <div class="cvss-presets-bar">
+                    <label>THREAT MODELING PRESETS:</label>
+                    <div class="cvss-preset-buttons">
+                        <button type="button" class="btn-cvss-preset" data-preset="prompt-injection">🤖 Prompt Injection</button>
+                        <button type="button" class="btn-cvss-preset" data-preset="sqli">💉 SQL Injection</button>
+                        <button type="button" class="btn-cvss-preset" data-preset="ssrf">🌐 SSRF / Cloud Leak</button>
+                        <button type="button" class="btn-cvss-preset" data-preset="secrets">🔑 Hardcoded Secret</button>
+                        <button type="button" class="btn-cvss-preset" data-preset="cors">🔓 Wildcard CORS</button>
+                        <button type="button" class="btn-cvss-preset" data-preset="headers">🛡️ Missing CSP / HSTS</button>
+                        <button type="button" class="btn-cvss-preset" data-preset="cookie">🍪 Insecure Cookie</button>
+                    </div>
+                </div>
+
+                <!-- Interactive CVSS Metric Selector Matrix -->
+                <div class="cvss-matrix-grid">
+                    <!-- Column 1: Exploitability Metrics -->
+                    <div class="cvss-matrix-col">
+                        <div class="matrix-col-title">
+                            <span class="matrix-icon">⚡</span>
+                            <span>Exploitability Metrics</span>
+                        </div>
+
+                        <!-- AV: Attack Vector -->
+                        <div class="cvss-metric-group" data-metric="AV">
+                            <div class="metric-label-row">
+                                <span class="metric-name">Attack Vector (AV)</span>
+                                <span class="metric-selected-desc" id="desc-AV">Remotely exploitable</span>
+                            </div>
+                            <div class="metric-btn-group">
+                                <button type="button" class="btn-metric" data-val="N">Network (N)</button>
+                                <button type="button" class="btn-metric" data-val="A">Adjacent (A)</button>
+                                <button type="button" class="btn-metric" data-val="L">Local (L)</button>
+                                <button type="button" class="btn-metric" data-val="P">Physical (P)</button>
+                            </div>
+                        </div>
+
+                        <!-- AC: Attack Complexity -->
+                        <div class="cvss-metric-group" data-metric="AC">
+                            <div class="metric-label-row">
+                                <span class="metric-name">Attack Complexity (AC)</span>
+                                <span class="metric-selected-desc" id="desc-AC">No specialized conditions</span>
+                            </div>
+                            <div class="metric-btn-group">
+                                <button type="button" class="btn-metric" data-val="L">Low (L)</button>
+                                <button type="button" class="btn-metric" data-val="H">High (H)</button>
+                            </div>
+                        </div>
+
+                        <!-- PR: Privileges Required -->
+                        <div class="cvss-metric-group" data-metric="PR">
+                            <div class="metric-label-row">
+                                <span class="metric-name">Privileges Required (PR)</span>
+                                <span class="metric-selected-desc" id="desc-PR">Unauthenticated attacker</span>
+                            </div>
+                            <div class="metric-btn-group">
+                                <button type="button" class="btn-metric" data-val="N">None (N)</button>
+                                <button type="button" class="btn-metric" data-val="L">Low (L)</button>
+                                <button type="button" class="btn-metric" data-val="H">High (H)</button>
+                            </div>
+                        </div>
+
+                        <!-- UI: User Interaction -->
+                        <div class="cvss-metric-group" data-metric="UI">
+                            <div class="metric-label-row">
+                                <span class="metric-name">User Interaction (UI)</span>
+                                <span class="metric-selected-desc" id="desc-UI">Zero interaction required</span>
+                            </div>
+                            <div class="metric-btn-group">
+                                <button type="button" class="btn-metric" data-val="N">None (N)</button>
+                                <button type="button" class="btn-metric" data-val="R">Required (R)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Scope & Impact Metrics -->
+                    <div class="cvss-matrix-col">
+                        <div class="matrix-col-title">
+                            <span class="matrix-icon">💥</span>
+                            <span>Scope & Impact Metrics</span>
+                        </div>
+
+                        <!-- S: Scope -->
+                        <div class="cvss-metric-group" data-metric="S">
+                            <div class="metric-label-row">
+                                <span class="metric-name">Scope Boundary (S)</span>
+                                <span class="metric-selected-desc" id="desc-S">Impacts component only</span>
+                            </div>
+                            <div class="metric-btn-group">
+                                <button type="button" class="btn-metric" data-val="U">Unchanged (U)</button>
+                                <button type="button" class="btn-metric" data-val="C">Changed (C)</button>
+                            </div>
+                        </div>
+
+                        <!-- C: Confidentiality -->
+                        <div class="cvss-metric-group" data-metric="C">
+                            <div class="metric-label-row">
+                                <span class="metric-name">Confidentiality Impact (C)</span>
+                                <span class="metric-selected-desc" id="desc-C">Total data disclosure</span>
+                            </div>
+                            <div class="metric-btn-group">
+                                <button type="button" class="btn-metric" data-val="N">None (N)</button>
+                                <button type="button" class="btn-metric" data-val="L">Low (L)</button>
+                                <button type="button" class="btn-metric" data-val="H">High (H)</button>
+                            </div>
+                        </div>
+
+                        <!-- I: Integrity -->
+                        <div class="cvss-metric-group" data-metric="I">
+                            <div class="metric-label-row">
+                                <span class="metric-name">Integrity Impact (I)</span>
+                                <span class="metric-selected-desc" id="desc-I">Total modification of state</span>
+                            </div>
+                            <div class="metric-btn-group">
+                                <button type="button" class="btn-metric" data-val="N">None (N)</button>
+                                <button type="button" class="btn-metric" data-val="L">Low (L)</button>
+                                <button type="button" class="btn-metric" data-val="H">High (H)</button>
+                            </div>
+                        </div>
+
+                        <!-- A: Availability -->
+                        <div class="cvss-metric-group" data-metric="A">
+                            <div class="metric-label-row">
+                                <span class="metric-name">Availability Impact (A)</span>
+                                <span class="metric-selected-desc" id="desc-A">Total denial of service</span>
+                            </div>
+                            <div class="metric-btn-group">
+                                <button type="button" class="btn-metric" data-val="N">None (N)</button>
+                                <button type="button" class="btn-metric" data-val="L">Low (L)</button>
+                                <button type="button" class="btn-metric" data-val="H">High (H)</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

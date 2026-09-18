@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 import { nanoid } from 'nanoid';
 import { generateAutoPatch } from './utils/patch-generator.js';
 import { calculateSecurityScore, generateSvgBadge } from './utils/security-score.js';
+import { calculateCvss, parseCvssVector, inferCvssForFinding } from './utils/cvss-calculator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -337,13 +338,43 @@ const server = http.createServer((req, res) => {
     }
 
     // API: Get Scan Status
-    if (pathname.startsWith('/api/scan/') && req.method === 'GET') {
+    if (pathname.startsWith('/api/scan/') && req.method === 'GET' && !pathname.includes('/events') && !pathname.includes('/logs')) {
         const scanId = pathname.replace('/api/scan/', '');
-        const scanData = activeScans.get(scanId);
+        let scanData = activeScans.get(scanId);
+
+        if (!scanData) {
+            // Check if report exists on disk
+            const reportPath = path.join(REPORTS_DIR, scanId, 'report.json');
+            if (fs.existsSync(reportPath)) {
+                try {
+                    const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+                    scanData = {
+                        scanId,
+                        url: report.meta?.target || 'Unknown',
+                        completed: true,
+                        status: 'completed',
+                        duration: report.meta?.duration ? (report.meta.duration / 1000).toFixed(1) : '0',
+                        report,
+                        reportHtmlUrl: `/vibe-shield-reports/${scanId}/report.html`
+                    };
+                } catch (e) {}
+            }
+        }
+
         if (!scanData) {
             res.writeHead(404, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({ error: 'Scan ID not found' }));
         }
+
+        // Enrich findings with CVSS if not already present
+        if (scanData.report && Array.isArray(scanData.report.findings)) {
+            scanData.report.findings.forEach(f => {
+                if (!f.cvss) {
+                    f.cvss = inferCvssForFinding(f);
+                }
+            });
+        }
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify(scanData));
     }
@@ -391,6 +422,33 @@ const server = http.createServer((req, res) => {
         const svg = generateSvgBadge(grade, score, color);
         res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-cache' });
         return res.end(svg);
+    }
+
+    // API: CVSS v3.1 Quantitative Score Calculator
+    if (pathname === '/api/cvss/calculate' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const payload = JSON.parse(body || '{}');
+                let result;
+                if (payload.vectorString) {
+                    result = parseCvssVector(payload.vectorString);
+                } else if (payload.metrics) {
+                    result = calculateCvss(payload.metrics);
+                } else if (payload.finding) {
+                    result = inferCvssForFinding(payload.finding);
+                } else {
+                    result = calculateCvss(payload);
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(result));
+            } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err.message }));
+            }
+        });
+        return;
     }
 
     // API: AI Auto-Patch Generator

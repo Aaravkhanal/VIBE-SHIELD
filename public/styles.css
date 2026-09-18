@@ -1420,6 +1420,408 @@ body {
     color: var(--text-muted);
 }
 
+/* ═══════════════════════════════════════════════════════
+   CVSS v3.1 Quantitative Score Calculator Styles
+   ═══════════════════════════════════════════════════════ */
+
+.cvss-modal-card {
+    max-width: 880px !important;
+    width: 95vw;
+    background: #0d121d;
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 240, 255, 0.1);
+}
+
+.badge-cvss-tag {
+    background: rgba(0, 240, 255, 0.15);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.cvss-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 20px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.cvss-score-banner {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 20px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    align-items: center;
+}
+
+@media (max-width: 768px) {
+    .cvss-score-banner {
+        grid-template-columns: 1fr;
+    }
+}
+
+.cvss-score-gauge-wrap {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.cvss-score-ring {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle, rgba(255, 51, 102, 0.15) 0%, rgba(13, 18, 29, 0.8) 70%);
+    border: 3px solid #ff3366;
+    box-shadow: 0 0 25px rgba(255, 51, 102, 0.3);
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.cvss-score-num {
+    font-size: 28px;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    color: #fff;
+    line-height: 1;
+}
+
+.cvss-score-max {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+.cvss-score-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cvss-qualitative-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.cvss-subscores-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.cvss-subscore-card {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.subscore-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.subscore-head strong {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.subscore-bar-bg {
+    width: 100%;
+    height: 7px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.subscore-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));
+    border-radius: 4px;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.subscore-hint {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* Vector Box */
+.cvss-vector-container {
+    background: #070a10;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+}
+
+.cvss-vector-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.cvss-vector-header label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+}
+
+.cvss-vector-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-mini {
+    font-size: 10px !important;
+    padding: 3px 8px !important;
+}
+
+.cvss-vector-display code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent-cyan);
+    word-break: break-all;
+    user-select: all;
+    display: block;
+}
+
+/* Threat Modeling Presets */
+.cvss-presets-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cvss-presets-bar label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+}
+
+.cvss-preset-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.btn-cvss-preset {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-cvss-preset:hover {
+    background: rgba(0, 240, 255, 0.1);
+    border-color: rgba(0, 240, 255, 0.4);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+
+/* Metric Selector Matrix Grid */
+.cvss-matrix-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 768px) {
+    .cvss-matrix-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.cvss-matrix-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 14px;
+}
+
+.matrix-col-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.cvss-metric-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.metric-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+}
+
+.metric-name {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.metric-selected-desc {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.metric-btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 3px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.btn-metric {
+    flex: 1;
+    min-width: 60px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.btn-metric:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.btn-metric.active {
+    background: rgba(0, 240, 255, 0.15);
+    border-color: rgba(0, 240, 255, 0.6);
+    color: var(--accent-cyan);
+    font-weight: 700;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+}
+
+/* Findings Table CVSS Badges */
+.cvss-score-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.cvss-score-pill:hover {
+    transform: translateY(-1px) scale(1.05);
+    box-shadow: 0 0 12px currentColor;
+}
+
+.cvss-score-pill.cvss-critical {
+    background: rgba(255, 51, 102, 0.15);
+    color: #ff3366;
+    border: 1px solid rgba(255, 51, 102, 0.4);
+}
+
+.cvss-score-pill.cvss-high {
+    background: rgba(255, 153, 0, 0.15);
+    color: #ff9900;
+    border: 1px solid rgba(255, 153, 0, 0.4);
+}
+
+.cvss-score-pill.cvss-medium {
+    background: rgba(255, 204, 0, 0.15);
+    color: #ffcc00;
+    border: 1px solid rgba(255, 204, 0, 0.4);
+}
+
+.cvss-score-pill.cvss-low {
+    background: rgba(0, 240, 255, 0.15);
+    color: #00f0ff;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+}
+
+.cvss-score-pill.cvss-none {
+    background: rgba(115, 138, 156, 0.15);
+    color: #738a9c;
+    border: 1px solid rgba(115, 138, 156, 0.4);
+}
+
+.cvss-vector-snippet {
+    display: block;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    margin-top: 3px;
+    cursor: pointer;
+}
+
+.cvss-vector-snippet:hover {
+    color: var(--accent-cyan);
+}
+
+.btn-cvss-action {
+    background: rgba(0, 240, 255, 0.08);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--accent-cyan);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-cvss-action:hover {
+    background: rgba(0, 240, 255, 0.2);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+.actions-cell-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
 .hidden {
     display: none !important;
 }

@@ -1,11 +1,12 @@
 import { nanoid } from 'nanoid';
 import { tagFinding } from './owasp-mapper.js';
+import { inferCvssForFinding } from './cvss-calculator.js';
 
 const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'info'];
 
 /**
  * Creates a VIBE SHIELD Finding object matching the manifest schema.
- * Automatically tagged with OWASP Top 10 (2021) classification.
+ * Automatically tagged with OWASP Top 10 (2021) classification and CVSS v3.1 Quantitative Score.
  */
 export function createFinding({
     module = 'qa',
@@ -19,11 +20,12 @@ export function createFinding({
     references = [],
     status = 'open',
     source = null,
+    cvss = null,
 }) {
     const prefix = module.toUpperCase();
     const shortId = nanoid(6);
 
-    const finding = {
+    const baseFinding = {
         id: `VIBE SHIELD-${prefix}-${shortId}`,
         module,
         title,
@@ -40,8 +42,11 @@ export function createFinding({
         ...(source ? { source } : {}),
     };
 
+    // Calculate CVSS v3.1 score and vector
+    baseFinding.cvss = cvss || inferCvssForFinding(baseFinding);
+
     // Auto-tag with OWASP Top 10 classification
-    return tagFinding(finding);
+    return tagFinding(baseFinding);
 }
 
 /**
