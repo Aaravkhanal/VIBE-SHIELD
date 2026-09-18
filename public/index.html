@@ -307,6 +307,69 @@
                         </div>
                     </div>
 
+                    <!-- Radial Site Map & Surface Tree (Attack Surface Topology) -->
+                    <div class="threat-map-container" id="sitemap-container" style="margin-bottom: 28px;">
+                        <div class="threat-map-header">
+                            <div>
+                                <h3>🗺️ Interactive Radial Site Map & Surface Topology</h3>
+                                <p class="subtitle" id="sitemap-meta-subtitle">Orbital attack surface visualization mapping routes, auth walls, and API endpoints</p>
+                            </div>
+                            <div class="threat-map-controls">
+                                <div class="sitemap-search-wrap">
+                                    <input type="text" id="sitemap-search-input" placeholder="🔍 Search route or API..." class="sitemap-search-field" />
+                                </div>
+                                <div class="terminal-filters" id="sitemap-filter-group">
+                                    <button type="button" class="terminal-filter-btn active" data-sitemap-filter="all">ALL</button>
+                                    <button type="button" class="terminal-filter-btn" data-sitemap-filter="api">⚡ APIs</button>
+                                    <button type="button" class="terminal-filter-btn" data-sitemap-filter="auth">🔒 Auth Gated</button>
+                                    <button type="button" class="terminal-filter-btn" data-sitemap-filter="vuln">🚨 Vulnerable</button>
+                                    <button type="button" class="terminal-filter-btn" data-sitemap-filter="page">🌐 Pages</button>
+                                </div>
+                                <button type="button" id="btn-toggle-sitemap-layout" class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;">Mode: 🪐 Radial</button>
+                                <button type="button" id="btn-reset-sitemap" class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;">Reset View</button>
+                            </div>
+                        </div>
+                        
+                        <div class="threat-canvas-wrapper" style="height: 480px;">
+                            <canvas id="sitemap-graph-canvas"></canvas>
+                            <div id="sitemap-node-inspector" class="threat-inspector hidden">
+                                <div class="inspector-header">
+                                    <span id="sitemap-inspector-badge" class="badge">API ENDPOINT</span>
+                                    <button type="button" id="close-sitemap-inspector-btn" class="close-btn">×</button>
+                                </div>
+                                <h4 id="sitemap-inspector-title">/api/models</h4>
+                                <div class="inspector-field">
+                                    <label>SURFACE CLASSIFICATION</label>
+                                    <div id="sitemap-inspector-type" class="inspector-val">Rest API (JSON)</div>
+                                </div>
+                                <div class="inspector-field">
+                                    <label>AUTH & ACCESS BOUNDARY</label>
+                                    <div id="sitemap-inspector-auth" class="inspector-val">Public Endpoint</div>
+                                </div>
+                                <div class="inspector-field">
+                                    <label>ASSOCIATED VULNERABILITIES</label>
+                                    <div id="sitemap-inspector-vulns" class="inspector-val">2 Findings Detected</div>
+                                </div>
+                                <div class="inspector-field">
+                                    <label>DISCOVERED FORMS & INPUTS</label>
+                                    <div id="sitemap-inspector-inputs" class="inspector-val code-block">None</div>
+                                </div>
+                                <button type="button" id="sitemap-filter-table-btn" class="btn btn-primary" style="width: 100%; margin-top: 10px; font-size: 11px; padding: 6px 12px;">
+                                    🔍 Filter Findings for this Route
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Site Map Legend -->
+                        <div class="threat-legend">
+                            <div class="legend-item"><span class="legend-dot" style="background: #00ff88; box-shadow: 0 0 8px #00ff88;"></span> <span>🌐 Public Page</span></div>
+                            <div class="legend-item"><span class="legend-dot" style="background: #00e5ff; box-shadow: 0 0 8px #00e5ff;"></span> <span>⚡ API Endpoint</span></div>
+                            <div class="legend-item"><span class="legend-dot" style="background: #ffb700; box-shadow: 0 0 8px #ffb700;"></span> <span>🔒 Auth-Protected Boundary</span></div>
+                            <div class="legend-item"><span class="legend-dot" style="background: #bd00ff; box-shadow: 0 0 8px #bd00ff;"></span> <span>📝 Form / Input Surface</span></div>
+                            <div class="legend-item"><span class="legend-dot" style="background: #ff3366; box-shadow: 0 0 8px #ff3366;"></span> <span>🚨 Vulnerable Surface</span></div>
+                        </div>
+                    </div>
+
                     <!-- Attack Vector Chaining Graph (Cyber Threat Map) -->
                     <div class="threat-map-container">
                         <div class="threat-map-header">

@@ -489,17 +489,24 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render Vibe Security Score & Shield Badge
         renderSecurityScoreAudit(report);
 
-        // Render Threat Graph
+        // Render Radial Site Map & Threat Graph
+        if (window.radialSiteMap) {
+            window.radialSiteMap.buildFromReport(report, status.url);
+        }
         if (window.threatGraph) {
             window.threatGraph.buildFromReport(report, status.url);
         }
 
-        // Table Rows
+        // Render Table Rows
+        renderFindingsTable(report.findings || []);
+    }
+
+    function renderFindingsTable(findings) {
         const tbody = document.getElementById('findings-table-body');
+        if (!tbody) return;
         tbody.innerHTML = '';
 
-        const findings = report.findings || [];
-        if (findings.length === 0) {
+        if (!findings || findings.length === 0) {
             tbody.innerHTML = `<tr><td colspan="6" class="empty-state">🎉 Clean Scan! No findings at configured threshold.</td></tr>`;
             return;
         }
@@ -523,7 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
 
             const patchBtn = tr.querySelector('.auto-patch-btn');
-            patchBtn.onclick = () => openAutoPatchModal(f);
+            if (patchBtn) patchBtn.onclick = () => openAutoPatchModal(f);
             tbody.appendChild(tr);
         });
     }
@@ -621,6 +628,717 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Failed to copy text:', err);
             }
         };
+    }
+
+    // ═══════════════════════════════════════════════
+    // Radial Site Map & Surface Topology Engine
+    // ═══════════════════════════════════════════════
+
+    class RadialSiteMapEngine {
+        constructor(canvas, inspector) {
+            this.canvas = canvas;
+            this.ctx = canvas.getContext('2d');
+            this.inspector = inspector;
+            this.nodes = [];
+            this.edges = [];
+            this.particles = [];
+            this.selectedNode = null;
+            this.hoveredNode = null;
+            this.draggedNode = null;
+            this.animId = null;
+
+            this.layoutMode = 'radial';
+            this.activeFilter = 'all';
+            this.searchQuery = '';
+
+            // Performance flags
+            this.isDirty = true;
+            this.isVisible = true;
+            this.isTabActive = !document.hidden;
+
+            this.initVisibilityObserver();
+            this.initEvents();
+            this.resize();
+            window.addEventListener('resize', () => {
+                this.resize();
+                if (this.lastReport) this.buildFromReport(this.lastReport, this.lastUrl);
+            });
+        }
+
+        initVisibilityObserver() {
+            if ('IntersectionObserver' in window) {
+                this.observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        this.isVisible = entry.isIntersecting;
+                        if (this.isVisible && this.isTabActive) {
+                            this.markDirty();
+                        } else {
+                            this.stopAnimation();
+                        }
+                    });
+                }, { threshold: 0.05 });
+                this.observer.observe(this.canvas);
+            }
+
+            document.addEventListener('visibilitychange', () => {
+                this.isTabActive = !document.hidden;
+                if (this.isVisible && this.isTabActive) {
+                    this.markDirty();
+                } else {
+                    this.stopAnimation();
+                }
+            });
+        }
+
+        markDirty() {
+            this.isDirty = true;
+            if (this.isVisible && this.isTabActive && !this.animId) {
+                this.startAnimation();
+            }
+        }
+
+        resize() {
+            if (!this.canvas.parentElement) return;
+            const rect = this.canvas.parentElement.getBoundingClientRect();
+            this.canvas.width = rect.width || 1000;
+            this.canvas.height = rect.height || 480;
+        }
+
+        initEvents() {
+            let isDown = false;
+            let dragOffset = { x: 0, y: 0 };
+
+            this.canvas.addEventListener('mousedown', (e) => {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                const clicked = this.findNodeAt(x, y);
+                if (clicked) {
+                    this.draggedNode = clicked;
+                    this.selectedNode = clicked;
+                    dragOffset.x = x - clicked.x;
+                    dragOffset.y = y - clicked.y;
+                    isDown = true;
+                    this.canvas.style.cursor = 'grabbing';
+                    this.showInspector(clicked);
+                    this.markDirty();
+                }
+            });
+
+            this.canvas.addEventListener('mousemove', (e) => {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                if (isDown && this.draggedNode) {
+                    this.draggedNode.x = x - dragOffset.x;
+                    this.draggedNode.y = y - dragOffset.y;
+                    this.canvas.style.cursor = 'grabbing';
+                    this.markDirty();
+                } else {
+                    const hovered = this.findNodeAt(x, y);
+                    if (this.hoveredNode !== hovered) {
+                        this.hoveredNode = hovered;
+                        this.canvas.style.cursor = hovered ? 'pointer' : 'default';
+                        this.markDirty();
+                    }
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (isDown) {
+                    isDown = false;
+                    this.draggedNode = null;
+                    if (this.canvas) this.canvas.style.cursor = this.hoveredNode ? 'pointer' : 'default';
+                    this.markDirty();
+                }
+            });
+
+            const closeBtn = document.getElementById('close-sitemap-inspector-btn');
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    this.inspector.classList.add('hidden');
+                    this.selectedNode = null;
+                    this.markDirty();
+                };
+            }
+
+            const resetBtn = document.getElementById('btn-reset-sitemap');
+            if (resetBtn) {
+                resetBtn.onclick = () => {
+                    if (this.lastReport) this.buildFromReport(this.lastReport, this.lastUrl);
+                };
+            }
+
+            const toggleLayoutBtn = document.getElementById('btn-toggle-sitemap-layout');
+            if (toggleLayoutBtn) {
+                toggleLayoutBtn.onclick = () => {
+                    this.layoutMode = this.layoutMode === 'radial' ? 'tree' : 'radial';
+                    toggleLayoutBtn.textContent = this.layoutMode === 'radial' ? 'Mode: 🪐 Radial' : 'Mode: 🌲 Tree';
+                    if (this.lastReport) this.buildFromReport(this.lastReport, this.lastUrl);
+                };
+            }
+
+            const filterGroup = document.getElementById('sitemap-filter-group');
+            if (filterGroup) {
+                filterGroup.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.terminal-filter-btn');
+                    if (!btn) return;
+                    filterGroup.querySelectorAll('.terminal-filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    this.activeFilter = btn.dataset.sitemapFilter || 'all';
+                    this.applyFilter();
+                });
+            }
+
+            const searchInput = document.getElementById('sitemap-search-input');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    this.searchQuery = e.target.value.trim().toLowerCase();
+                    this.applyFilter();
+                });
+            }
+
+            const filterTableBtn = document.getElementById('sitemap-filter-table-btn');
+            if (filterTableBtn) {
+                filterTableBtn.onclick = () => {
+                    if (this.selectedNode) {
+                        this.filterFindingsTableByRoute(this.selectedNode.path || this.selectedNode.label);
+                    }
+                };
+            }
+        }
+
+        filterFindingsTableByRoute(routePath) {
+            if (!this.lastReport) return;
+            const findings = this.lastReport.findings || [];
+            const cleanTarget = routePath.toLowerCase();
+
+            const matched = findings.filter(f => {
+                const surface = (f.affected_surface || '').toLowerCase();
+                const desc = (f.description || '').toLowerCase();
+                return surface.includes(cleanTarget) || desc.includes(cleanTarget);
+            });
+
+            if (matched.length === 0) {
+                showToast(`No specific finding mapped to ${routePath}, showing all findings`, 'info');
+                renderFindingsTable(findings);
+            } else {
+                showToast(`Filtered findings for route: ${routePath} (${matched.length} findings)`, 'success');
+                renderFindingsTable(matched);
+                const tableWrap = document.querySelector('.table-responsive');
+                if (tableWrap) tableWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        applyFilter() {
+            this.nodes.forEach(node => {
+                let matchesType = true;
+                if (this.activeFilter !== 'all') {
+                    if (this.activeFilter === 'api') matchesType = node.category === 'api';
+                    else if (this.activeFilter === 'auth') matchesType = node.isAuthGated;
+                    else if (this.activeFilter === 'vuln') matchesType = (node.vulnCount || 0) > 0;
+                    else if (this.activeFilter === 'page') matchesType = node.category === 'page';
+                }
+
+                let matchesSearch = true;
+                if (this.searchQuery) {
+                    matchesSearch = (node.label || '').toLowerCase().includes(this.searchQuery) ||
+                                    (node.path || '').toLowerCase().includes(this.searchQuery);
+                }
+
+                node.isDimmed = !(matchesType && matchesSearch);
+            });
+            this.markDirty();
+        }
+
+        findNodeAt(x, y) {
+            for (let i = this.nodes.length - 1; i >= 0; i--) {
+                const n = this.nodes[i];
+                const dist = Math.hypot(n.x - x, n.y - y);
+                if (dist <= n.radius + 8) return n;
+            }
+            return null;
+        }
+
+        buildFromReport(report, targetUrl) {
+            this.lastReport = report;
+            this.lastUrl = targetUrl;
+            this.resize();
+
+            this.nodes = [];
+            this.edges = [];
+            this.particles = [];
+
+            const width = this.canvas.width || 1000;
+            const height = this.canvas.height || 480;
+
+            let host = 'target-app.com';
+            try { host = new URL(targetUrl).hostname; } catch(e) {}
+
+            const findings = report.findings || [];
+
+            // Extract discovered routes from findings & surface inventory
+            const discoveredRoutesMap = new Map();
+
+            // Default core routes based on web apps
+            const defaultCore = [
+                { path: '/', label: 'Home Page (/)', category: 'page', method: 'GET', auth: 'Public', inputs: 'None' },
+                { path: '/login', label: 'Auth Gateway (/login)', category: 'auth', method: 'POST', auth: 'Public Ingest', inputs: 'username, password' },
+                { path: '/dashboard', label: 'Dashboard (/dashboard)', category: 'auth', method: 'GET', auth: 'Protected (Session Cookie)', inputs: 'User state' },
+                { path: '/settings', label: 'Settings (/settings)', category: 'page', method: 'GET', auth: 'Protected', inputs: 'profile form' }
+            ];
+
+            defaultCore.forEach(r => discoveredRoutesMap.set(r.path, r));
+
+            // Extract routes from findings
+            findings.forEach(f => {
+                const text = `${f.affected_surface || ''} ${f.description || ''}`;
+                const apiMatches = text.match(/\/api\/[a-zA-Z0-9_\-\/]+/g) || [];
+                apiMatches.forEach(apiPath => {
+                    if (!discoveredRoutesMap.has(apiPath)) {
+                        discoveredRoutesMap.set(apiPath, {
+                            path: apiPath,
+                            label: apiPath,
+                            category: 'api',
+                            method: apiPath.includes('auth') || apiPath.includes('generate') ? 'POST' : 'GET',
+                            auth: apiPath.includes('auth') || apiPath.includes('profile') ? 'Session Required' : 'Public API',
+                            inputs: 'JSON Payload'
+                        });
+                    }
+                });
+
+                const routeMatches = text.match(/https?:\/\/[^\s\/'"]+(\/[a-zA-Z0-9_\-\/]+)/g) || [];
+                routeMatches.forEach(fullUrl => {
+                    try {
+                        const parsed = new URL(fullUrl);
+                        if (parsed.pathname && !discoveredRoutesMap.has(parsed.pathname)) {
+                            discoveredRoutesMap.set(parsed.pathname, {
+                                path: parsed.pathname,
+                                label: parsed.pathname,
+                                category: parsed.pathname.startsWith('/api') ? 'api' : 'page',
+                                method: 'GET',
+                                auth: 'Standard',
+                                inputs: 'None'
+                            });
+                        }
+                    } catch(e) {}
+                });
+            });
+
+            // Count findings per route
+            const routesList = Array.from(discoveredRoutesMap.values());
+            routesList.forEach(r => {
+                const clean = r.path.toLowerCase();
+                const matchedFindings = findings.filter(f => {
+                    const aff = (f.affected_surface || '').toLowerCase();
+                    const desc = (f.description || '').toLowerCase();
+                    return aff.includes(clean) || desc.includes(clean);
+                });
+                r.vulnCount = matchedFindings.length;
+                r.matchedFindings = matchedFindings;
+                r.isAuthGated = r.category === 'auth' || (r.auth && (r.auth.toLowerCase().includes('protect') || r.auth.toLowerCase().includes('session')));
+            });
+
+            // Update subtitle stats
+            const subtitleEl = document.getElementById('sitemap-meta-subtitle');
+            if (subtitleEl) {
+                const totalApis = routesList.filter(r => r.category === 'api').length;
+                const totalAuth = routesList.filter(r => r.isAuthGated).length;
+                const totalVulns = routesList.filter(r => r.vulnCount > 0).length;
+                subtitleEl.textContent = `${routesList.length} Discovered Routes · ${totalApis} APIs · ${totalAuth} Auth Walls · ${totalVulns} Vulnerable Surfaces`;
+            }
+
+            // 1. Root Node (Center)
+            const centerX = width * 0.5;
+            const centerY = height * 0.5;
+
+            const rootNode = {
+                id: 'sitemap-root',
+                path: '/',
+                label: host,
+                category: 'root',
+                x: this.layoutMode === 'radial' ? centerX : width * 0.12,
+                y: centerY,
+                radius: 24,
+                color: '#00ff88',
+                glow: 'rgba(0, 255, 136, 0.5)',
+                icon: '🛡️',
+                typeLabel: 'Target Web Origin',
+                auth: 'Origin Surface',
+                vulnCount: 0,
+                inputs: 'All Edge Vectors'
+            };
+            this.nodes.push(rootNode);
+
+            // Group routes into Branches: Pages, APIs, Auth/Boundary
+            const pageRoutes = routesList.filter(r => r.category === 'page');
+            const apiRoutes = routesList.filter(r => r.category === 'api');
+            const authRoutes = routesList.filter(r => r.category === 'auth');
+
+            const categories = [
+                { id: 'cat-pages', label: 'Web Pages (SPA)', icon: '🌐', color: '#00ff88', glow: 'rgba(0, 255, 136, 0.4)', routes: pageRoutes },
+                { id: 'cat-api', label: 'REST APIs & Endpoints', icon: '⚡', color: '#00e5ff', glow: 'rgba(0, 229, 255, 0.4)', routes: apiRoutes },
+                { id: 'cat-auth', label: 'Auth & Protected Walls', icon: '🔒', color: '#ffb700', glow: 'rgba(255, 183, 0, 0.4)', routes: authRoutes }
+            ].filter(c => c.routes.length > 0);
+
+            if (this.layoutMode === 'radial') {
+                // Radial Orbit Positioning
+                const catOrbitRadius = Math.min(width, height) * 0.28;
+                const leafOrbitRadius = Math.min(width, height) * 0.42;
+
+                categories.forEach((cat, cIdx) => {
+                    const baseAngle = (cIdx / categories.length) * Math.PI * 2 - Math.PI / 2;
+                    const catX = centerX + Math.cos(baseAngle) * catOrbitRadius;
+                    const catY = centerY + Math.sin(baseAngle) * catOrbitRadius;
+
+                    const catNode = {
+                        id: cat.id,
+                        label: cat.label,
+                        category: 'category',
+                        x: catX,
+                        y: catY,
+                        radius: 20,
+                        color: cat.color,
+                        glow: cat.glow,
+                        icon: cat.icon,
+                        typeLabel: 'Route Cluster',
+                        auth: 'Structural Branch',
+                        vulnCount: cat.routes.reduce((acc, r) => acc + r.vulnCount, 0),
+                        inputs: 'Route Branch'
+                    };
+                    this.nodes.push(catNode);
+                    this.edges.push({ source: rootNode, target: catNode, color: cat.color });
+
+                    // Layout leaf routes around category arc
+                    const arcSpan = (Math.PI * 1.6) / categories.length;
+                    const routeCount = cat.routes.length;
+
+                    cat.routes.forEach((r, rIdx) => {
+                        const offset = routeCount > 1 ? (rIdx / (routeCount - 1) - 0.5) * arcSpan : 0;
+                        const routeAngle = baseAngle + offset;
+                        const rX = centerX + Math.cos(routeAngle) * leafOrbitRadius;
+                        const rY = centerY + Math.sin(routeAngle) * leafOrbitRadius;
+
+                        const isVuln = r.vulnCount > 0;
+                        const nodeColor = isVuln ? '#ff3366' : cat.color;
+                        const nodeGlow = isVuln ? 'rgba(255, 51, 102, 0.5)' : cat.glow;
+                        const icon = isVuln ? '🚨' : (r.category === 'api' ? '⚡' : r.isAuthGated ? '🔒' : '📄');
+
+                        const rNode = {
+                            id: `route-${cIdx}-${rIdx}`,
+                            path: r.path,
+                            label: r.label,
+                            category: r.category,
+                            isAuthGated: r.isAuthGated,
+                            vulnCount: r.vulnCount,
+                            matchedFindings: r.matchedFindings,
+                            x: rX,
+                            y: rY,
+                            radius: isVuln ? 17 : 14,
+                            color: nodeColor,
+                            glow: nodeGlow,
+                            icon: icon,
+                            typeLabel: r.category === 'api' ? `REST API (${r.method})` : (r.isAuthGated ? 'Auth-Gated Route' : 'Public Web Page'),
+                            auth: r.auth,
+                            inputs: r.inputs
+                        };
+                        this.nodes.push(rNode);
+                        this.edges.push({ source: catNode, target: rNode, color: nodeColor });
+                    });
+                });
+            } else {
+                // Hierarchical Tree Layout
+                const col2X = width * 0.42;
+                const col3X = width * 0.76;
+
+                let leafYTracker = 40;
+                const totalLeaves = routesList.length;
+                const rowSpacing = Math.max(28, (height - 60) / Math.max(1, totalLeaves));
+
+                categories.forEach((cat, cIdx) => {
+                    const catStartCount = cat.routes.length;
+                    const catCenterY = leafYTracker + (catStartCount * rowSpacing) / 2;
+
+                    const catNode = {
+                        id: cat.id,
+                        label: cat.label,
+                        category: 'category',
+                        x: col2X,
+                        y: catCenterY,
+                        radius: 19,
+                        color: cat.color,
+                        glow: cat.glow,
+                        icon: cat.icon,
+                        typeLabel: 'Route Cluster',
+                        auth: 'Structural Branch',
+                        vulnCount: cat.routes.reduce((acc, r) => acc + r.vulnCount, 0),
+                        inputs: 'Route Branch'
+                    };
+                    this.nodes.push(catNode);
+                    this.edges.push({ source: rootNode, target: catNode, color: cat.color });
+
+                    cat.routes.forEach((r, rIdx) => {
+                        const rY = leafYTracker + 14;
+                        leafYTracker += rowSpacing;
+
+                        const isVuln = r.vulnCount > 0;
+                        const nodeColor = isVuln ? '#ff3366' : cat.color;
+                        const nodeGlow = isVuln ? 'rgba(255, 51, 102, 0.5)' : cat.glow;
+                        const icon = isVuln ? '🚨' : (r.category === 'api' ? '⚡' : r.isAuthGated ? '🔒' : '📄');
+
+                        const rNode = {
+                            id: `route-${cIdx}-${rIdx}`,
+                            path: r.path,
+                            label: r.label,
+                            category: r.category,
+                            isAuthGated: r.isAuthGated,
+                            vulnCount: r.vulnCount,
+                            matchedFindings: r.matchedFindings,
+                            x: col3X,
+                            y: rY,
+                            radius: isVuln ? 16 : 13,
+                            color: nodeColor,
+                            glow: nodeGlow,
+                            icon: icon,
+                            typeLabel: r.category === 'api' ? `REST API (${r.method})` : (r.isAuthGated ? 'Auth-Gated Route' : 'Public Web Page'),
+                            auth: r.auth,
+                            inputs: r.inputs
+                        };
+                        this.nodes.push(rNode);
+                        this.edges.push({ source: catNode, target: rNode, color: nodeColor });
+                    });
+                });
+            }
+
+            this.spawnParticles();
+            this.showInspector(this.nodes[0]);
+            this.startAnimation();
+        }
+
+        spawnParticles() {
+            this.particles = [];
+            this.edges.forEach((edge) => {
+                for (let i = 0; i < 2; i++) {
+                    this.particles.push({
+                        edge,
+                        progress: Math.random(),
+                        speed: 0.004 + Math.random() * 0.005,
+                        color: edge.color || '#00e5ff'
+                    });
+                }
+            });
+        }
+
+        stopAnimation() {
+            if (this.animId) {
+                cancelAnimationFrame(this.animId);
+                this.animId = null;
+            }
+        }
+
+        startAnimation() {
+            if (this.animId) return;
+            if (!this.isVisible || !this.isTabActive) return;
+
+            const render = () => {
+                if (!this.isVisible || !this.isTabActive) {
+                    this.animId = null;
+                    return;
+                }
+
+                this.update();
+                this.draw();
+                this.isDirty = false;
+
+                if (this.particles.length > 0 || this.draggedNode || this.isDirty) {
+                    this.animId = requestAnimationFrame(render);
+                } else {
+                    this.animId = null;
+                }
+            };
+            this.animId = requestAnimationFrame(render);
+        }
+
+        update() {
+            for (let i = 0; i < this.nodes.length; i++) {
+                for (let j = i + 1; j < this.nodes.length; j++) {
+                    const n1 = this.nodes[i];
+                    const n2 = this.nodes[j];
+                    const dx = n2.x - n1.x;
+                    const dy = n2.y - n1.y;
+                    const dist = Math.hypot(dx, dy) || 1;
+                    if (dist < 45) {
+                        const force = (45 - dist) / dist * 0.012;
+                        if (n1 !== this.draggedNode && n1.id !== 'sitemap-root') { n1.x -= dx * force; n1.y -= dy * force; }
+                        if (n2 !== this.draggedNode && n2.id !== 'sitemap-root') { n2.x += dx * force; n2.y += dy * force; }
+                    }
+                }
+            }
+
+            this.particles.forEach(p => {
+                p.progress += p.speed;
+                if (p.progress >= 1) p.progress = 0;
+            });
+        }
+
+        draw() {
+            const ctx = this.ctx;
+            const width = this.canvas.width;
+            const height = this.canvas.height;
+            ctx.clearRect(0, 0, width, height);
+
+            const centerX = width * 0.5;
+            const centerY = height * 0.5;
+
+            // Concentric Orbital Rings (in Radial mode)
+            if (this.layoutMode === 'radial') {
+                [0.28, 0.42].forEach(ratio => {
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, Math.min(width, height) * ratio, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 6]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                });
+            }
+
+            // Draw Edges
+            this.edges.forEach(edge => {
+                const isDimmed = edge.source.isDimmed || edge.target.isDimmed;
+                const isHighlighted = (this.selectedNode && (edge.source === this.selectedNode || edge.target === this.selectedNode)) ||
+                                      (this.hoveredNode && (edge.source === this.hoveredNode || edge.target === this.hoveredNode));
+
+                ctx.beginPath();
+                ctx.moveTo(edge.source.x, edge.source.y);
+
+                if (this.layoutMode === 'tree') {
+                    const cp1X = edge.source.x + (edge.target.x - edge.source.x) * 0.5;
+                    const cp1Y = edge.source.y;
+                    const cp2X = edge.source.x + (edge.target.x - edge.source.x) * 0.5;
+                    const cp2Y = edge.target.y;
+                    ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, edge.target.x, edge.target.y);
+                } else {
+                    ctx.lineTo(edge.target.x, edge.target.y);
+                }
+
+                ctx.strokeStyle = isDimmed ? 'rgba(255, 255, 255, 0.03)' : (isHighlighted ? '#00ff88' : 'rgba(255, 255, 255, 0.12)');
+                ctx.lineWidth = isHighlighted ? 2.2 : 1.2;
+                ctx.stroke();
+            });
+
+            // Particles
+            this.particles.forEach(p => {
+                if (p.edge.source.isDimmed || p.edge.target.isDimmed) return;
+                const x = p.edge.source.x + (p.edge.target.x - p.edge.source.x) * p.progress;
+                const y = p.edge.source.y + (p.edge.target.y - p.edge.source.y) * p.progress;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.shadowColor = p.color;
+                ctx.shadowBlur = 8;
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // Draw Nodes
+            this.nodes.forEach(node => {
+                const isSelected = this.selectedNode === node;
+                const isHovered = this.hoveredNode === node;
+                const isDimmed = node.isDimmed;
+
+                ctx.save();
+                if (isDimmed) ctx.globalAlpha = 0.2;
+
+                // Outer selection ring
+                if (isSelected || isHovered) {
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, node.radius + 6, 0, Math.PI * 2);
+                    ctx.strokeStyle = isSelected ? '#00ff88' : 'rgba(255, 255, 255, 0.7)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([3, 3]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // Node Glow
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, node.radius + (isSelected ? 8 : 4), 0, Math.PI * 2);
+                ctx.fillStyle = isSelected ? 'rgba(0, 255, 136, 0.35)' : node.glow;
+                ctx.fill();
+
+                // Base Circle
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#0a0d14';
+                ctx.fill();
+                ctx.lineWidth = isSelected ? 2.5 : 1.8;
+                ctx.strokeStyle = isSelected ? '#00ff88' : node.color;
+                ctx.stroke();
+
+                // Inner Icon
+                ctx.font = '11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(node.icon || '●', node.x, node.y);
+
+                // Vulnerability count badge if > 0
+                if (node.vulnCount > 0) {
+                    const badgeX = node.x + node.radius - 2;
+                    const badgeY = node.y - node.radius + 2;
+                    ctx.beginPath();
+                    ctx.arc(badgeX, badgeY, 7, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ff3366';
+                    ctx.shadowColor = '#ff3366';
+                    ctx.shadowBlur = 6;
+                    ctx.fill();
+
+                    ctx.font = 'bold 8px Inter, sans-serif';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(String(node.vulnCount), badgeX, badgeY + 0.5);
+                }
+
+                // Label Text
+                ctx.font = (isSelected || isHovered ? 'bold ' : '') + '10px Inter, sans-serif';
+                ctx.fillStyle = isSelected ? '#00ff88' : '#f0f4fc';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText(node.label, node.x, node.y + node.radius + 6);
+
+                ctx.restore();
+            });
+        }
+
+        showInspector(node) {
+            this.selectedNode = node;
+            this.inspector.classList.remove('hidden');
+
+            const badge = document.getElementById('sitemap-inspector-badge');
+            if (badge) {
+                badge.textContent = (node.category || 'SURFACE').toUpperCase();
+                badge.style.borderColor = node.color;
+                badge.style.color = node.color;
+            }
+
+            const titleEl = document.getElementById('sitemap-inspector-title');
+            const typeEl = document.getElementById('sitemap-inspector-type');
+            const authEl = document.getElementById('sitemap-inspector-auth');
+            const vulnsEl = document.getElementById('sitemap-inspector-vulns');
+            const inputsEl = document.getElementById('sitemap-inspector-inputs');
+
+            if (titleEl) titleEl.textContent = node.path || node.label;
+            if (typeEl) typeEl.textContent = node.typeLabel || 'Web Resource';
+            if (authEl) authEl.textContent = node.auth || 'Public Endpoint';
+            if (vulnsEl) {
+                vulnsEl.textContent = node.vulnCount > 0 ? `🚨 ${node.vulnCount} Finding(s) Correlated` : '✔ No direct vulnerability flags';
+                vulnsEl.style.color = node.vulnCount > 0 ? '#ff3366' : '#00ff88';
+            }
+            if (inputsEl) inputsEl.textContent = node.inputs || 'None';
+        }
     }
 
     // ═══════════════════════════════════════════════
@@ -1294,6 +2012,13 @@ document.addEventListener('DOMContentLoaded', () => {
             resultsTerminalDrawer.classList.add('hidden');
             toggleResultsTerminalBtn.textContent = '📺 View Execution Logs';
         };
+    }
+
+    // Initialize Radial Site Map Canvas & Inspector
+    const sitemapCanvas = document.getElementById('sitemap-graph-canvas');
+    const sitemapInspector = document.getElementById('sitemap-node-inspector');
+    if (sitemapCanvas && sitemapInspector) {
+        window.radialSiteMap = new RadialSiteMapEngine(sitemapCanvas, sitemapInspector);
     }
 
     // Initialize Threat Graph Canvas & Inspector
