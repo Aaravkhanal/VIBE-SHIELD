@@ -20,12 +20,15 @@
                     <span class="badge version-badge">v1.0.0</span>
                 </div>
             </div>
-            <div class="history-status" style="display:flex;align-items:center;gap:10px;">
-                <button type="button" id="open-cvss-lab-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 12px; border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.08);">
+            <div class="history-status" style="display:flex;align-items:center;gap:8px;">
+                <button type="button" id="open-cvss-lab-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.08);">
                     <span class="btn-icon">🎯</span> CVSS v3.1 Lab
                 </button>
-                <button type="button" id="open-waf-modal-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 12px; border-color: rgba(112, 0, 255, 0.4); background: rgba(112, 0, 255, 0.08);">
+                <button type="button" id="open-waf-modal-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(112, 0, 255, 0.4); background: rgba(112, 0, 255, 0.08);">
                     <span class="btn-icon">🛡️</span> Fix & WAF Exporter
+                </button>
+                <button type="button" id="open-ai-matrix-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(255, 0, 128, 0.4); background: rgba(255, 0, 128, 0.08);">
+                    <span class="btn-icon">⚔️</span> AI Threat Matrix
                 </button>
                 <span class="header-status">
                     <span class="status-indicator active"></span>
@@ -544,6 +547,30 @@
                 </div>
             </section>
 
+            <!-- OWASP Top 10 for LLMs AI Threat Matrix Section -->
+            <section id="ai-matrix-section" class="card ai-matrix-card">
+                <div class="card-header ai-matrix-header">
+                    <div>
+                        <div class="section-badge-wrap" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                            <span class="badge badge-ai-matrix">⚔️ ADVERSARIAL AI INTELLIGENCE</span>
+                            <span class="badge badge-secondary" id="ai-matrix-status-pill">10 VECTORS ARMED</span>
+                        </div>
+                        <h2>OWASP Top 10 for LLMs — Threat & Exploitation Matrix</h2>
+                        <p class="subtitle">Autonomous evaluation of Prompt Injection, System Prompt Leakage, Context Bombing & Multi-Turn Adversarial Jailbreaks</p>
+                    </div>
+                    <div class="ai-matrix-controls">
+                        <button type="button" id="run-matrix-sim-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #ff007f 0%, #7000ff 100%); border: none; font-size: 11px; padding: 7px 14px; font-weight: 700;">
+                            ⚡ Run Multi-Vector Threat Simulation
+                        </button>
+                    </div>
+                </div>
+
+                <!-- AI Threat Matrix Grid (10 interactive vector cards) -->
+                <div id="ai-matrix-grid" class="ai-matrix-grid">
+                    <div class="matrix-loading">Loading OWASP LLM Threat Taxonomy...</div>
+                </div>
+            </section>
+
             <!-- Scan History Section -->
             <section class="card history-card">
                 <div class="card-header">
@@ -881,6 +908,91 @@
                         <span>QUICK DEPLOYMENT COMMAND</span>
                     </div>
                     <code id="waf-deploy-command" class="waf-deploy-cli">sudo cp vibe-shield-security.conf /etc/nginx/conf.d/ && sudo nginx -t && sudo systemctl reload nginx</code>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Threat Simulation & Multi-Turn Sandbox Modal -->
+    <div id="ai-simulation-modal" class="modal-backdrop hidden">
+        <div class="modal-card ai-sim-modal-card">
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <span class="badge badge-ai-sim-tag">⚔️ ADVERSARIAL AI MULTI-TURN THREAT SIMULATOR</span>
+                    <h3 id="sim-modal-title">LLM01: Prompt Injection (Direct & Indirect)</h3>
+                </div>
+                <button type="button" id="close-ai-sim-modal-btn" class="close-btn">×</button>
+            </div>
+
+            <div class="modal-body ai-sim-modal-body">
+                <!-- Threat Profile Overview -->
+                <div class="sim-threat-banner">
+                    <div class="sim-threat-meta">
+                        <span id="sim-threat-id" class="badge badge-vector-code">LLM01</span>
+                        <span id="sim-threat-sev" class="badge badge-critical">CRITICAL (CVSS 9.3)</span>
+                        <span id="sim-threat-status" class="badge badge-status-defended">🛡️ GUARDRAIL ACTIVE</span>
+                    </div>
+                    <p id="sim-threat-desc" class="sim-threat-desc">
+                        Adversary manipulates LLM behavior through crafted user inputs or untrusted third-party content.
+                    </p>
+                </div>
+
+                <!-- Multi-Turn Dialogue Sandbox -->
+                <div class="sim-dialogue-container">
+                    <div class="sim-dialogue-head">
+                        <div class="dialogue-head-left">
+                            <span class="sim-dot-live"></span>
+                            <span class="sim-dialogue-title">LIVE MULTI-TURN ADVERSARIAL PROBE STREAM</span>
+                        </div>
+                        <span id="sim-category-label" class="sim-cat-tag">Multi-Turn System Instruction Hijack</span>
+                    </div>
+                    <div id="sim-dialogue-stream" class="sim-dialogue-stream">
+                        <!-- Populated dynamically turn by turn -->
+                    </div>
+                </div>
+
+                <!-- Live Guardrail Telemetry Bar -->
+                <div class="sim-telemetry-grid">
+                    <div class="sim-telemetry-card">
+                        <span class="telemetry-label">DEFENSE VERDICT</span>
+                        <strong id="sim-telemetry-verdict" class="telemetry-val text-green">INTERCEPTED & NEUTRALIZED</strong>
+                    </div>
+                    <div class="sim-telemetry-card">
+                        <span class="telemetry-label">INFERENCE LATENCY</span>
+                        <strong id="sim-telemetry-latency" class="telemetry-val">168ms</strong>
+                    </div>
+                    <div class="sim-telemetry-card">
+                        <span class="telemetry-label">TOKENS CONSUMED</span>
+                        <strong id="sim-telemetry-tokens" class="telemetry-val">112 tokens</strong>
+                    </div>
+                    <div class="sim-telemetry-card">
+                        <span class="telemetry-label">PRIMARY GUARDRAIL RULE</span>
+                        <strong id="sim-telemetry-rule" class="telemetry-val" style="font-size: 11px;">Strict XML System Prompt Boundary Tagging</strong>
+                    </div>
+                </div>
+
+                <!-- Production Defense Guardrail Code Box -->
+                <div class="code-editor-box sim-code-box">
+                    <div class="editor-top-bar">
+                        <div class="waf-editor-info">
+                            <span class="file-path">📁 guardrails/ai-defense-policy.ts</span>
+                            <span class="waf-file-desc">Production NeMo / Llama-Guard defense filter definition</span>
+                        </div>
+                        <button type="button" id="sim-copy-code-btn" class="btn btn-secondary copy-btn">
+                            <span class="copy-icon">📋</span> <span id="sim-copy-btn-text">Copy Guardrail Code</span>
+                        </button>
+                    </div>
+                    <pre><code id="sim-code-content" class="code-content">// Generating guardrail policy...</code></pre>
+                </div>
+
+                <!-- Simulation Footer Controls -->
+                <div class="sim-footer-controls">
+                    <button type="button" id="sim-rerun-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #ff007f 0%, #7000ff 100%); border: none;">
+                        ▶️ Re-Run Adversarial Probe
+                    </button>
+                    <button type="button" id="sim-next-btn" class="btn btn-secondary">
+                        Next Threat Vector (LLM02) ↗
+                    </button>
                 </div>
             </div>
         </div>

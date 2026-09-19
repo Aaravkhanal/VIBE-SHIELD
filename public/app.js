@@ -508,6 +508,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Render Table Rows
         renderFindingsTable(report.findings || []);
+
+        // Update AI Threat & Exploitation Matrix
+        if (window.aiThreatMatrix) {
+            window.aiThreatMatrix.updateFromReport(report);
+        }
     }
 
     // ═══════════════════════════════════════════════
@@ -3238,6 +3243,265 @@ ${currentWafBundle.artifacts.docker || ''}
             console.error('Error loading scan details for ' + scanId, err);
         }
     };
+
+    // ═══════════════════════════════════════════════
+    // AI Threat Simulation & Exploitation Matrix Manager
+    // ═══════════════════════════════════════════════
+    class AiThreatMatrixManager {
+        constructor() {
+            this.gridEl = document.getElementById('ai-matrix-grid');
+            this.modalEl = document.getElementById('ai-simulation-modal');
+            this.closeBtn = document.getElementById('close-ai-sim-modal-btn');
+            this.headerBtn = document.getElementById('open-ai-matrix-header-btn');
+            this.batchSimBtn = document.getElementById('run-matrix-sim-btn');
+            this.modalTitle = document.getElementById('sim-modal-title');
+            this.threatId = document.getElementById('sim-threat-id');
+            this.threatSev = document.getElementById('sim-threat-sev');
+            this.threatStatus = document.getElementById('sim-threat-status');
+            this.threatDesc = document.getElementById('sim-threat-desc');
+            this.categoryLabel = document.getElementById('sim-category-label');
+            this.dialogueStream = document.getElementById('sim-dialogue-stream');
+            this.telemetryVerdict = document.getElementById('sim-telemetry-verdict');
+            this.telemetryLatency = document.getElementById('sim-telemetry-latency');
+            this.telemetryTokens = document.getElementById('sim-telemetry-tokens');
+            this.telemetryRule = document.getElementById('sim-telemetry-rule');
+            this.codeContent = document.getElementById('sim-code-content');
+            this.copyCodeBtn = document.getElementById('sim-copy-code-btn');
+            this.copyBtnText = document.getElementById('sim-copy-btn-text');
+            this.rerunBtn = document.getElementById('sim-rerun-btn');
+            this.nextBtn = document.getElementById('sim-next-btn');
+            this.statusPill = document.getElementById('ai-matrix-status-pill');
+
+            this.matrixData = [];
+            this.currentVectorIndex = 0;
+            this.init();
+        }
+
+        async init() {
+            if (this.closeBtn) {
+                this.closeBtn.onclick = () => this.modalEl.classList.add('hidden');
+            }
+            if (this.modalEl) {
+                this.modalEl.addEventListener('click', (e) => {
+                    if (e.target === this.modalEl) this.modalEl.classList.add('hidden');
+                });
+            }
+            if (this.headerBtn) {
+                this.headerBtn.onclick = () => {
+                    const section = document.getElementById('ai-matrix-section');
+                    if (section) section.scrollIntoView({ behavior: 'smooth' });
+                };
+            }
+            if (this.batchSimBtn) {
+                this.batchSimBtn.onclick = () => this.runBatchSimulation();
+            }
+            if (this.copyCodeBtn) {
+                this.copyCodeBtn.onclick = async () => {
+                    const text = this.codeContent?.textContent || '';
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        if (this.copyBtnText) this.copyBtnText.textContent = 'Copied! ✓';
+                        this.copyCodeBtn.style.color = 'var(--accent-green)';
+                        setTimeout(() => {
+                            if (this.copyBtnText) this.copyBtnText.textContent = 'Copy Guardrail Code';
+                            this.copyCodeBtn.style.color = '';
+                        }, 2000);
+                    } catch(e) {}
+                };
+            }
+            if (this.rerunBtn) {
+                this.rerunBtn.onclick = () => {
+                    const vector = this.matrixData[this.currentVectorIndex];
+                    if (vector) this.executeSimulation(vector.id);
+                };
+            }
+            if (this.nextBtn) {
+                this.nextBtn.onclick = () => {
+                    this.currentVectorIndex = (this.currentVectorIndex + 1) % this.matrixData.length;
+                    const vector = this.matrixData[this.currentVectorIndex];
+                    if (vector) this.openModal(vector.id);
+                };
+            }
+
+            try {
+                const res = await fetch('/api/ai-matrix/taxonomy');
+                if (res.ok) {
+                    this.matrixData = await res.json();
+                    this.render();
+                }
+            } catch(e) {
+                console.error('Failed to load AI matrix taxonomy:', e);
+            }
+        }
+
+        async updateFromReport(report) {
+            try {
+                const res = await fetch('/api/ai-matrix/evaluate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ report })
+                });
+                if (res.ok) {
+                    this.matrixData = await res.json();
+                    const vulnerableCount = this.matrixData.filter(m => m.status === 'VULNERABLE').length;
+                    if (this.statusPill) {
+                        if (vulnerableCount > 0) {
+                            this.statusPill.className = 'badge badge-critical';
+                            this.statusPill.textContent = `${vulnerableCount} VULNERABILITIES DETECTED`;
+                        } else {
+                            this.statusPill.className = 'badge badge-secondary';
+                            this.statusPill.textContent = '10 VECTORS DEFENDED';
+                        }
+                    }
+                    this.render();
+                }
+            } catch(e) {
+                console.error('Failed to evaluate AI matrix:', e);
+            }
+        }
+
+        render() {
+            if (!this.gridEl) return;
+            this.gridEl.innerHTML = '';
+
+            this.matrixData.forEach((vector) => {
+                const isVuln = vector.status === 'VULNERABLE';
+                const card = document.createElement('div');
+                card.className = `matrix-card ${isVuln ? 'is-vulnerable' : ''}`;
+                
+                const sevClass = 'pill-' + (vector.severity || 'high');
+                const statusBadgeHtml = isVuln
+                    ? `<span class="badge badge-status-vulnerable">⚠️ ${vector.findingsCount || 1} VULN DETECTED</span>`
+                    : `<span class="badge badge-status-defended">🛡️ GUARDRAIL ACTIVE</span>`;
+
+                card.innerHTML = `
+                    <div class="matrix-card-head">
+                        <span class="badge-vector-code">${vector.id}</span>
+                        <div style="display:flex;gap:6px;align-items:center;">
+                            <span class="badge ${sevClass}">${(vector.severity || 'HIGH').toUpperCase()}</span>
+                            <span class="badge" style="font-family:var(--font-mono);font-size:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);">CVSS ${vector.cvss}</span>
+                        </div>
+                    </div>
+                    <div class="matrix-card-title">${escapeHtml(vector.title)}</div>
+                    <div class="matrix-card-desc">${escapeHtml(vector.description)}</div>
+                    <div class="matrix-status-bar">
+                        ${statusBadgeHtml}
+                        <span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);">${vector.attackPrimitives?.length || 4} Primitives</span>
+                    </div>
+                    <button type="button" class="btn-sim-trigger" data-vector-id="${vector.id}">
+                        ⚡ Simulate Attack & Guardrail ↗
+                    </button>
+                `;
+
+                const btn = card.querySelector('.btn-sim-trigger');
+                if (btn) btn.onclick = () => this.openModal(vector.id);
+                this.gridEl.appendChild(card);
+            });
+        }
+
+        async openModal(vectorId) {
+            if (!this.modalEl) return;
+            const idx = this.matrixData.findIndex(v => v.id === vectorId);
+            if (idx !== -1) this.currentVectorIndex = idx;
+            const vector = this.matrixData[this.currentVectorIndex] || this.matrixData[0];
+            if (!vector) return;
+
+            this.modalEl.classList.remove('hidden');
+            this.modalTitle.textContent = `${vector.id}: ${vector.title}`;
+            this.threatId.textContent = vector.id;
+            this.threatSev.textContent = `${(vector.severity || 'HIGH').toUpperCase()} (CVSS ${vector.cvss})`;
+            this.threatSev.className = `badge badge-${vector.severity || 'high'}`;
+            
+            const isVuln = vector.status === 'VULNERABLE';
+            this.threatStatus.textContent = isVuln ? '⚠️ VULNERABILITY DETECTED' : '🛡️ GUARDRAIL ACTIVE';
+            this.threatStatus.className = `badge ${isVuln ? 'badge-status-vulnerable' : 'badge-status-defended'}`;
+            this.threatDesc.textContent = vector.description;
+            this.categoryLabel.textContent = vector.simulation?.category || 'Adversarial Probe';
+
+            const nextIndex = (this.currentVectorIndex + 1) % this.matrixData.length;
+            const nextVector = this.matrixData[nextIndex];
+            if (this.nextBtn && nextVector) {
+                this.nextBtn.textContent = `Next Threat Vector (${nextVector.id}) ↗`;
+            }
+
+            await this.executeSimulation(vector.id);
+        }
+
+        async executeSimulation(vectorId) {
+            if (!this.dialogueStream) return;
+            this.dialogueStream.innerHTML = '<div style="color:var(--text-muted);font-size:11px;font-family:var(--font-mono);">⚡ Initializing multi-turn adversarial probe simulation...</div>';
+
+            try {
+                const res = await fetch('/api/ai-matrix/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ vectorId })
+                });
+
+                const sim = await res.json();
+                
+                // Update Telemetry
+                if (this.telemetryVerdict) this.telemetryVerdict.textContent = sim.guardrailVerdict;
+                if (this.telemetryLatency) this.telemetryLatency.textContent = `${sim.latencyMs}ms`;
+                if (this.telemetryTokens) this.telemetryTokens.textContent = `${sim.tokensConsumed} tokens`;
+                if (this.telemetryRule) this.telemetryRule.textContent = sim.guardrailRuleApplied;
+                if (this.codeContent) this.codeContent.textContent = sim.remediationSnippet;
+
+                // Animate turns
+                this.dialogueStream.innerHTML = '';
+                const turns = sim.simulation?.turns || [];
+
+                for (let i = 0; i < turns.length; i++) {
+                    const t = turns[i];
+                    const turnDiv = document.createElement('div');
+                    
+                    if (t.role === 'adversary') {
+                        turnDiv.className = 'sim-turn-card sim-turn-adversary';
+                        turnDiv.innerHTML = `
+                            <div class="sim-turn-header">
+                                <span>🔴 TURN ${t.turn} — ADVERSARY PROBE</span>
+                                <span>MALICIOUS INTENT</span>
+                            </div>
+                            <div class="sim-turn-body">${escapeHtml(t.text)}</div>
+                            <div class="sim-turn-intent">🎯 Attack Vector: ${escapeHtml(t.intent || '')}</div>
+                        `;
+                    } else if (t.role === 'guardrail') {
+                        turnDiv.className = 'sim-turn-card sim-turn-guardrail';
+                        turnDiv.innerHTML = `
+                            <div class="sim-turn-header">
+                                <span>🟡 TURN ${t.turn} — GUARDRAIL INTERCEPTION</span>
+                                <span>POLICY ENFORCEMENT</span>
+                            </div>
+                            <div class="sim-turn-body">${escapeHtml(t.text)}</div>
+                        `;
+                    } else {
+                        turnDiv.className = 'sim-turn-card sim-turn-model';
+                        turnDiv.innerHTML = `
+                            <div class="sim-turn-header">
+                                <span>🟢 TURN ${t.turn} — DEFENDED MODEL RESPONSE</span>
+                                <span>OUTPUT SANITIZED</span>
+                            </div>
+                            <div class="sim-turn-body">${escapeHtml(t.text)}</div>
+                            <div class="sim-turn-intent" style="color:var(--accent-green);font-weight:600;">✔ ${escapeHtml(t.verdict || '')}</div>
+                        `;
+                    }
+
+                    this.dialogueStream.appendChild(turnDiv);
+                }
+            } catch(err) {
+                this.dialogueStream.innerHTML = `<div style="color:#ff3366;font-size:11px;">Simulation error: ${err.message}</div>`;
+            }
+        }
+
+        async runBatchSimulation() {
+            if (this.matrixData.length > 0) {
+                this.openModal(this.matrixData[0].id);
+            }
+        }
+    }
+
+    // Instantiate AI Threat Matrix Manager
+    window.aiThreatMatrix = new AiThreatMatrixManager();
 
     function escapeHtml(str) {
         return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
