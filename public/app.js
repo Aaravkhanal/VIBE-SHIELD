@@ -454,6 +454,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const summary = report.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
         const scanId = status.scanId || currentScanId;
 
+        window.currentScanReport = report;
+        window.currentScanStatus = status;
+        window.currentScanId = scanId;
+
         document.getElementById('count-critical').textContent = summary.critical;
         document.getElementById('count-high').textContent = summary.high;
         document.getElementById('count-medium').textContent = summary.medium;
@@ -742,6 +746,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button type="button" class="btn-patch-action auto-patch-btn" data-finding-index="${idx}">
                             ⚡ Auto-Patch Code
                         </button>
+                        <button type="button" class="btn-waf-action open-waf-btn" data-finding-index="${idx}" style="background: rgba(112, 0, 255, 0.1); border: 1px solid rgba(112, 0, 255, 0.35); color: #a855f7; font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+                            🛡️ WAF Rule
+                        </button>
                     </div>
                 </td>
             `;
@@ -754,6 +761,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Wire Patch Modal trigger
             const patchBtn = tr.querySelector('.auto-patch-btn');
             if (patchBtn) patchBtn.onclick = () => openAutoPatchModal(f);
+
+            // Wire WAF Modal trigger
+            const wafBtn = tr.querySelector('.open-waf-btn');
+            if (wafBtn) wafBtn.onclick = () => openWafModal({ finding: f });
 
             tbody.appendChild(tr);
         });
@@ -1070,8 +1081,236 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ═══════════════════════════════════════════════
-    // Radial Site Map & Surface Topology Engine
+    // Production Hardening & WAF Exporter Logic
     // ═══════════════════════════════════════════════
+
+    const wafModal = document.getElementById('waf-modal');
+    const closeWafModalBtn = document.getElementById('close-waf-modal-btn');
+    const openWafHeaderBtn = document.getElementById('open-waf-modal-header-btn');
+    const exportWafResultsBtn = document.getElementById('export-waf-bundle-btn');
+    const wafModalTitle = document.getElementById('waf-modal-title');
+    const wafTargetDomain = document.getElementById('waf-target-domain');
+    const wafFindingsCount = document.getElementById('waf-findings-count');
+    const wafFilePath = document.getElementById('waf-file-path');
+    const wafFileDesc = document.getElementById('waf-file-desc');
+    const wafCodeContent = document.getElementById('waf-code-content');
+    const wafDeployCommand = document.getElementById('waf-deploy-command');
+    const wafCopyCodeBtn = document.getElementById('waf-copy-code-btn');
+    const wafCopyBtnText = document.getElementById('waf-copy-btn-text');
+    const wafDownloadFileBtn = document.getElementById('waf-download-file-btn');
+    const wafDownloadAllBtn = document.getElementById('waf-download-all-btn');
+
+    let currentWafBundle = null;
+    let activeWafTab = 'nginx';
+
+    const WAF_TAB_META = {
+        nginx: {
+            file: '📁 /etc/nginx/conf.d/vibe-shield-security.conf',
+            desc: 'Production reverse proxy rate-limiting & WAF security rules',
+            filename: 'vibe-shield-security.conf',
+            cmd: 'sudo cp vibe-shield-security.conf /etc/nginx/conf.d/ && sudo nginx -t && sudo systemctl reload nginx',
+            mime: 'text/plain'
+        },
+        cloudflare: {
+            file: '📁 cloudflare-waf-rules.txt',
+            desc: 'Cloudflare Ruleset Expressions & Response Header Transforms',
+            filename: 'cloudflare-waf-rules.txt',
+            cmd: 'Paste expressions into Cloudflare Dashboard -> Security -> WAF -> Custom Rules',
+            mime: 'text/plain'
+        },
+        caddy: {
+            file: '📁 /etc/caddy/Caddyfile',
+            desc: 'Caddy v2 automatic HTTPS, header security & blocklists',
+            filename: 'Caddyfile',
+            cmd: 'sudo caddy reload --config /etc/caddy/Caddyfile',
+            mime: 'text/plain'
+        },
+        gitPatch: {
+            file: '📁 vibe-shield-hardening.patch',
+            desc: 'Unified Git patch implementing defense-in-depth middleware',
+            filename: 'vibe-shield-hardening.patch',
+            cmd: 'git apply vibe-shield-hardening.patch',
+            mime: 'text/x-diff'
+        },
+        env: {
+            file: '📁 .env.production',
+            desc: 'Hardened production environment variable template',
+            filename: '.env.production',
+            cmd: 'cp .env.production .env && chmod 600 .env',
+            mime: 'text/plain'
+        },
+        docker: {
+            file: '📁 Dockerfile.hardened',
+            desc: 'Multi-stage non-root container with dropped capabilities',
+            filename: 'Dockerfile.hardened',
+            cmd: 'docker build -t app-hardened -f Dockerfile.hardened .',
+            mime: 'text/plain'
+        }
+    };
+
+    if (closeWafModalBtn) {
+        closeWafModalBtn.onclick = () => wafModal.classList.add('hidden');
+    }
+    if (wafModal) {
+        wafModal.addEventListener('click', (e) => {
+            if (e.target === wafModal) wafModal.classList.add('hidden');
+        });
+    }
+
+    if (openWafHeaderBtn) {
+        openWafHeaderBtn.onclick = () => openWafModal();
+    }
+    if (exportWafResultsBtn) {
+        exportWafResultsBtn.onclick = () => openWafModal();
+    }
+
+    // Tab buttons
+    document.querySelectorAll('.waf-tab-btn').forEach(btn => {
+        btn.onclick = () => {
+            const tab = btn.dataset.tab;
+            if (tab && WAF_TAB_META[tab]) {
+                activeWafTab = tab;
+                document.querySelectorAll('.waf-tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                renderWafTabContent();
+            }
+        };
+    });
+
+    async function openWafModal(context = {}) {
+        if (!wafModal) return;
+        wafModal.classList.remove('hidden');
+
+        // Determine report context
+        const report = context.report || window.currentScanReport || {};
+        const scanId = context.scanId || window.currentScanId;
+        const finding = context.finding;
+        const target = context.target || report.meta?.target || window.currentScanStatus?.url || document.getElementById('target-url')?.value || 'target-app.com';
+
+        wafModalTitle.textContent = `Production Hardening & WAF Bundle (${target})`;
+        wafTargetDomain.textContent = target.replace(/https?:\/\//, '').split('/')[0];
+        wafFindingsCount.textContent = finding ? '1 Specific Finding' : `${report.findings?.length || report.dedupSummary?.total || 0} Security Findings Mitigated`;
+        wafCodeContent.textContent = '// Synthesizing production hardening & WAF configuration bundle...';
+
+        try {
+            const res = await fetch('/api/export/fix-bundle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    report,
+                    scanId,
+                    finding,
+                    target
+                })
+            });
+
+            currentWafBundle = await res.json();
+            if (currentWafBundle.target) {
+                wafTargetDomain.textContent = currentWafBundle.target;
+            }
+            if (currentWafBundle.findingsResolved !== undefined) {
+                wafFindingsCount.textContent = `${currentWafBundle.findingsResolved} Findings Mitigated`;
+            }
+            renderWafTabContent();
+        } catch (err) {
+            wafCodeContent.textContent = '// Error synthesizing bundle: ' + err.message;
+        }
+    }
+
+    function renderWafTabContent() {
+        if (!currentWafBundle || !currentWafBundle.artifacts) return;
+        const meta = WAF_TAB_META[activeWafTab] || WAF_TAB_META.nginx;
+        const code = currentWafBundle.artifacts[activeWafTab] || '// No configuration available';
+
+        if (wafFilePath) wafFilePath.textContent = meta.file;
+        if (wafFileDesc) wafFileDesc.textContent = meta.desc;
+        if (wafDeployCommand) wafDeployCommand.textContent = meta.cmd;
+        if (wafCodeContent) wafCodeContent.textContent = code;
+    }
+
+    function downloadTextFile(filename, text, mimeType = 'text/plain') {
+        const blob = new Blob([text], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // Copy Current Code
+    if (wafCopyCodeBtn) {
+        wafCopyCodeBtn.onclick = async () => {
+            const text = wafCodeContent?.textContent || '';
+            try {
+                await navigator.clipboard.writeText(text);
+                if (wafCopyBtnText) wafCopyBtnText.textContent = 'Copied! ✓';
+                wafCopyCodeBtn.style.color = 'var(--accent-green)';
+                setTimeout(() => {
+                    if (wafCopyBtnText) wafCopyBtnText.textContent = 'Copy Configuration';
+                    wafCopyCodeBtn.style.color = '';
+                }, 2000);
+            } catch(e) {}
+        };
+    }
+
+    // Download Active File
+    if (wafDownloadFileBtn) {
+        wafDownloadFileBtn.onclick = () => {
+            if (!currentWafBundle || !currentWafBundle.artifacts) return;
+            const meta = WAF_TAB_META[activeWafTab] || WAF_TAB_META.nginx;
+            const code = currentWafBundle.artifacts[activeWafTab] || '';
+            downloadTextFile(meta.filename, code, meta.mime);
+        };
+    }
+
+    // Download Full Hardening Bundle (Compound Markdown / Shell Script)
+    if (wafDownloadAllBtn) {
+        wafDownloadAllBtn.onclick = () => {
+            if (!currentWafBundle || !currentWafBundle.artifacts) return;
+            const domain = currentWafBundle.target || 'target-app';
+            let bundleContent = `# ==============================================================================
+# VIBE SHIELD Full Hardening & WAF Bundle
+# Target: ${domain}
+# Generated: ${new Date().toISOString()}
+# Resolves: ${currentWafBundle.findingsResolved || 0} Findings
+# ==============================================================================
+
+### 1. Nginx Security Configuration (nginx.conf)
+\`\`\`nginx
+${currentWafBundle.artifacts.nginx || ''}
+\`\`\`
+
+### 2. Cloudflare WAF Custom Rules
+\`\`\`text
+${currentWafBundle.artifacts.cloudflare || ''}
+\`\`\`
+
+### 3. Caddyfile Hardening
+\`\`\`caddy
+${currentWafBundle.artifacts.caddy || ''}
+\`\`\`
+
+### 4. GitHub PR Unified Patch (.patch)
+\`\`\`diff
+${currentWafBundle.artifacts.gitPatch || ''}
+\`\`\`
+
+### 5. Production Environment Template (.env.production)
+\`\`\`env
+${currentWafBundle.artifacts.env || ''}
+\`\`\`
+
+### 6. Dockerfile Multi-Stage Non-Root
+\`\`\`dockerfile
+${currentWafBundle.artifacts.docker || ''}
+\`\`\`
+`;
+            downloadTextFile(`vibe-shield-hardening-${domain}.md`, bundleContent, 'text/markdown');
+        };
+    }
 
     class RadialSiteMapEngine {
         constructor(canvas, inspector) {

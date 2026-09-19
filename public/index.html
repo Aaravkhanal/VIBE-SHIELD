@@ -20,9 +20,12 @@
                     <span class="badge version-badge">v1.0.0</span>
                 </div>
             </div>
-            <div class="history-status" style="display:flex;align-items:center;gap:12px;">
+            <div class="history-status" style="display:flex;align-items:center;gap:10px;">
                 <button type="button" id="open-cvss-lab-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 12px; border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.08);">
                     <span class="btn-icon">🎯</span> CVSS v3.1 Lab
+                </button>
+                <button type="button" id="open-waf-modal-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 12px; border-color: rgba(112, 0, 255, 0.4); background: rgba(112, 0, 255, 0.08);">
+                    <span class="btn-icon">🛡️</span> Fix & WAF Exporter
                 </button>
                 <span class="header-status">
                     <span class="status-indicator active"></span>
@@ -214,6 +217,9 @@
                             <p class="subtitle" id="results-meta-text">Completed scan details</p>
                         </div>
                         <div class="action-buttons">
+                            <button type="button" id="export-waf-bundle-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #7000ff 0%, #00f0ff 100%); border: none; font-weight: 700;">
+                                <span class="btn-icon">🛡️</span> One-Click Fix & WAF Bundle
+                            </button>
                             <button type="button" id="toggle-results-terminal-btn" class="btn btn-secondary">📺 View Execution Logs</button>
                             <button type="button" id="view-report-html-btn" class="btn btn-secondary">Open Full HTML Report ↗</button>
                         </div>
@@ -793,6 +799,88 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Production Hardening & WAF Exporter Modal -->
+    <div id="waf-modal" class="modal-backdrop hidden">
+        <div class="modal-card waf-modal-card">
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <span class="badge badge-waf-tag">🛡️ ONE-CLICK PRODUCTION HARDENING & WAF EXPORTER</span>
+                    <h3 id="waf-modal-title">Production Hardening & WAF Bundle</h3>
+                </div>
+                <button type="button" id="close-waf-modal-btn" class="close-btn">×</button>
+            </div>
+
+            <div class="modal-body waf-modal-body">
+                <!-- Overview Banner -->
+                <div class="waf-meta-banner">
+                    <div class="waf-meta-info">
+                        <div class="waf-domain-badge">
+                            <span class="waf-icon">🌐</span>
+                            <span id="waf-target-domain">target-app.com</span>
+                        </div>
+                        <span class="waf-badge" id="waf-findings-count">42 Security Findings Mitigated</span>
+                        <span class="waf-badge-green">✔ Ready for Production Deployment</span>
+                    </div>
+                    <div class="waf-banner-actions">
+                        <button type="button" id="waf-download-all-btn" class="btn btn-primary" style="font-size: 11px; padding: 6px 14px; background: linear-gradient(135deg, #7000ff 0%, #00f0ff 100%); border: none;">
+                            📦 Download Full Bundle
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Format Selection Tabs -->
+                <div class="waf-tabs-bar">
+                    <button type="button" class="waf-tab-btn active" data-tab="nginx">
+                        <span class="tab-icon">🌐</span> Nginx WAF Config
+                    </button>
+                    <button type="button" class="waf-tab-btn" data-tab="cloudflare">
+                        <span class="tab-icon">🔒</span> Cloudflare WAF Rules
+                    </button>
+                    <button type="button" class="waf-tab-btn" data-tab="caddy">
+                        <span class="tab-icon">⚡</span> Caddyfile Rules
+                    </button>
+                    <button type="button" class="waf-tab-btn" data-tab="gitPatch">
+                        <span class="tab-icon">🐙</span> GitHub PR Patch (.patch)
+                    </button>
+                    <button type="button" class="waf-tab-btn" data-tab="env">
+                        <span class="tab-icon">🔑</span> Hardened .env Template
+                    </button>
+                    <button type="button" class="waf-tab-btn" data-tab="docker">
+                        <span class="tab-icon">🐳</span> Dockerfile Hardening
+                    </button>
+                </div>
+
+                <!-- Code Editor / Preview Box -->
+                <div class="code-editor-box waf-code-box">
+                    <div class="editor-top-bar">
+                        <div class="waf-editor-info">
+                            <span id="waf-file-path" class="file-path">📁 /etc/nginx/conf.d/vibe-shield-security.conf</span>
+                            <span id="waf-file-desc" class="waf-file-desc">Production reverse proxy rate-limiting & WAF security rules</span>
+                        </div>
+                        <div class="waf-editor-actions">
+                            <button type="button" id="waf-copy-code-btn" class="btn btn-secondary copy-btn">
+                                <span class="copy-icon">📋</span> <span id="waf-copy-btn-text">Copy Configuration</span>
+                            </button>
+                            <button type="button" id="waf-download-file-btn" class="btn btn-secondary copy-btn">
+                                <span>💾</span> <span>Download File</span>
+                            </button>
+                        </div>
+                    </div>
+                    <pre><code id="waf-code-content" class="code-content">// Generating hardening rules...</code></pre>
+                </div>
+
+                <!-- Deployment Quick Guide Box -->
+                <div class="waf-deploy-box">
+                    <div class="deploy-box-head">
+                        <span class="deploy-icon">⚡</span>
+                        <span>QUICK DEPLOYMENT COMMAND</span>
+                    </div>
+                    <code id="waf-deploy-command" class="waf-deploy-cli">sudo cp vibe-shield-security.conf /etc/nginx/conf.d/ && sudo nginx -t && sudo systemctl reload nginx</code>
                 </div>
             </div>
         </div>

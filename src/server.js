@@ -7,6 +7,7 @@ import { nanoid } from 'nanoid';
 import { generateAutoPatch } from './utils/patch-generator.js';
 import { calculateSecurityScore, generateSvgBadge } from './utils/security-score.js';
 import { calculateCvss, parseCvssVector, inferCvssForFinding } from './utils/cvss-calculator.js';
+import { generateHardeningBundle } from './utils/waf-generator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -445,6 +446,46 @@ const server = http.createServer((req, res) => {
                 res.end(JSON.stringify(result));
             } catch (err) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err.message }));
+            }
+        });
+        return;
+    }
+
+    // API: One-Click Hardening & WAF Exporter Bundle
+    if (pathname === '/api/export/fix-bundle' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const payload = JSON.parse(body || '{}');
+                let report = payload.report;
+                
+                if (!report && payload.scanId) {
+                    const scanData = activeScans.get(payload.scanId);
+                    if (scanData && scanData.report) {
+                        report = scanData.report;
+                    } else {
+                        const reportPath = path.join(REPORTS_DIR, payload.scanId, 'report.json');
+                        if (fs.existsSync(reportPath)) {
+                            report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+                        }
+                    }
+                }
+
+                if (!report && payload.finding) {
+                    report = { findings: [payload.finding], meta: { target: payload.finding.affected_surface || 'app' } };
+                }
+
+                if (!report) {
+                    report = { findings: [], meta: { target: payload.target || 'target-app.com' } };
+                }
+
+                const bundle = generateHardeningBundle(report);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(bundle));
+            } catch (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err.message }));
             }
         });
