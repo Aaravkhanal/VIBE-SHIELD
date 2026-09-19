@@ -67,17 +67,21 @@ async function runScan(rawUrl, options, modulesToRun) {
     if (options.webhook) config.notify_webhook = options.webhook;
 
     // Propagate auth flags from CLI
-    if (options.username || options.password || options.loginUrl || options.authStrategy) {
+    if (options.username || options.password || options.loginUrl || options.authStrategy || options.bearerToken || options.authCookie || options.authRole) {
         config.auth = config.auth || {};
         if (options.authStrategy) config.auth.strategy = options.authStrategy;
         if (options.loginUrl) config.auth.login_url = options.loginUrl;
+        if (options.bearerToken) config.auth.bearer_token = options.bearerToken;
+        if (options.authCookie) config.auth.cookie = options.authCookie;
+        if (options.authRole) config.auth.role = options.authRole;
         if (options.username && options.password) {
             config.credentials = config.credentials || [];
-            // Add CLI credentials as a "cli" role if not already present
-            const hasCliRole = config.credentials.some(c => c.role === 'cli');
-            if (!hasCliRole) {
+            const role = options.authRole || 'cli';
+            // Add CLI credentials as a configured role if not already present
+            const hasRole = config.credentials.some(c => c.role === role);
+            if (!hasRole) {
                 config.credentials.push({
-                    role: 'cli',
+                    role,
                     username: options.username,
                     password: options.password,
                 });
@@ -389,6 +393,9 @@ program
     .option('--login-url <url>', 'Login page URL for form-based auth')
     .option('--username <user>', 'Username/email for authenticated scanning')
     .option('--password <pass>', 'Password for authenticated scanning')
+    .option('--bearer-token <token>', 'JWT / API Bearer token for authenticated scanning')
+    .option('--auth-cookie <cookies>', 'Session cookie string (key=value; key2=value2)')
+    .option('--auth-role <role>', 'Role identifier for authenticated session (default: admin)')
     .option('-v, --verbose', 'Enable verbose logging')
     .action(async (url, options) => {
         const modules = options.modules.split(',').map(m => m.trim().toLowerCase());

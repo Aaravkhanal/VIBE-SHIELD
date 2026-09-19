@@ -20,7 +20,7 @@
                     <span class="badge version-badge">v1.0.0</span>
                 </div>
             </div>
-            <div class="history-status" style="display:flex;align-items:center;gap:8px;">
+            <div class="history-status" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 <button type="button" id="open-cvss-lab-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.08);">
                     <span class="btn-icon">🎯</span> CVSS v3.1 Lab
                 </button>
@@ -29,6 +29,12 @@
                 </button>
                 <button type="button" id="open-ai-matrix-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(255, 0, 128, 0.4); background: rgba(255, 0, 128, 0.08);">
                     <span class="btn-icon">⚔️</span> AI Threat Matrix
+                </button>
+                <button type="button" id="open-cicd-modal-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(0, 255, 136, 0.4); background: rgba(0, 255, 136, 0.08);">
+                    <span class="btn-icon">⚡</span> CI/CD & Webhook Hub
+                </button>
+                <button type="button" id="open-exec-modal-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.08);">
+                    <span class="btn-icon">📄</span> Executive Report (PDF)
                 </button>
                 <span class="header-status">
                     <span class="status-indicator active"></span>
@@ -87,6 +93,99 @@
                                 <option value="25" selected>Standard Scan (Max 25 pages)</option>
                                 <option value="50">Deep Scan (Max 50 pages)</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Authentication Drawer -->
+                    <div class="auth-drawer-wrapper">
+                        <button type="button" id="toggle-auth-drawer-btn" class="auth-drawer-toggle">
+                            <span class="auth-drawer-toggle-left">
+                                <span class="auth-toggle-icon">🔐</span>
+                                <span class="auth-toggle-title">Authentication & Internal Dashboard Credentials (Optional)</span>
+                            </span>
+                            <span id="auth-drawer-badge" class="badge badge-unauth">Public Mode</span>
+                            <span id="auth-drawer-arrow" class="auth-drawer-arrow">▼</span>
+                        </button>
+                        <div id="auth-drawer-content" class="auth-drawer-body hidden">
+                            <div class="auth-strategy-nav">
+                                <label class="auth-tab-chip active" data-auth-strategy="none">
+                                    <input type="radio" name="auth-strategy" value="none" checked />
+                                    <span>🌐 Public (No Auth)</span>
+                                </label>
+                                <label class="auth-tab-chip" data-auth-strategy="form">
+                                    <input type="radio" name="auth-strategy" value="form" />
+                                    <span>🔑 Form Login (User & Password)</span>
+                                </label>
+                                <label class="auth-tab-chip" data-auth-strategy="token">
+                                    <input type="radio" name="auth-strategy" value="token" />
+                                    <span>🛡️ Bearer Token / JWT</span>
+                                </label>
+                                <label class="auth-tab-chip" data-auth-strategy="cookie">
+                                    <input type="radio" name="auth-strategy" value="cookie" />
+                                    <span>🍪 Session Cookies</span>
+                                </label>
+                            </div>
+
+                            <!-- Form Auth Input Block -->
+                            <div id="auth-panel-form" class="auth-panel-fields hidden">
+                                <div class="auth-fields-row">
+                                    <div class="auth-field-col">
+                                        <label for="auth-login-url">Login Page URL</label>
+                                        <input type="text" id="auth-login-url" placeholder="https://your-app.com/login (optional auto-discovery)" />
+                                    </div>
+                                    <div class="auth-field-col">
+                                        <label for="auth-role-name">Authenticated Role Label</label>
+                                        <input type="text" id="auth-role-name" placeholder="admin" value="admin" />
+                                    </div>
+                                </div>
+                                <div class="auth-fields-row">
+                                    <div class="auth-field-col">
+                                        <label for="auth-username">Username / Email</label>
+                                        <input type="text" id="auth-username" placeholder="test-account@your-app.com" autocomplete="off" />
+                                    </div>
+                                    <div class="auth-field-col">
+                                        <label for="auth-password">Password</label>
+                                        <input type="password" id="auth-password" placeholder="••••••••••••" autocomplete="off" />
+                                    </div>
+                                </div>
+                                <div class="auth-hint-text">
+                                    💡 <em>VIBE SHIELD will launch a headless browser session, fill the login form, extract auth state & storage tokens, and crawl internal dashboards under this role.</em>
+                                </div>
+                            </div>
+
+                            <!-- Bearer Token Input Block -->
+                            <div id="auth-panel-token" class="auth-panel-fields hidden">
+                                <div class="auth-fields-row">
+                                    <div class="auth-field-col" style="flex: 2;">
+                                        <label for="auth-bearer-token">JWT / Bearer Token String</label>
+                                        <input type="text" id="auth-bearer-token" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... or Bearer token" />
+                                    </div>
+                                    <div class="auth-field-col">
+                                        <label for="auth-token-role">Role Label</label>
+                                        <input type="text" id="auth-token-role" placeholder="api-user" value="authenticated-user" />
+                                    </div>
+                                </div>
+                                <div class="auth-hint-text">
+                                    💡 <em>Injected automatically into outgoing API headers and browser localStorage (<code>token</code>, <code>access_token</code>) for authenticated single-page apps.</em>
+                                </div>
+                            </div>
+
+                            <!-- Session Cookies Input Block -->
+                            <div id="auth-panel-cookie" class="auth-panel-fields hidden">
+                                <div class="auth-fields-row">
+                                    <div class="auth-field-col" style="flex: 2;">
+                                        <label for="auth-cookies">Session Cookie String</label>
+                                        <input type="text" id="auth-cookies" placeholder="session_id=s%3Aabc123; connect.sid=456; auth_user=789" />
+                                    </div>
+                                    <div class="auth-field-col">
+                                        <label for="auth-cookie-role">Role Label</label>
+                                        <input type="text" id="auth-cookie-role" placeholder="session-user" value="session-user" />
+                                    </div>
+                                </div>
+                                <div class="auth-hint-text">
+                                    💡 <em>Injected directly into the Playwright browser context to bypass login pages and access authenticated portal surfaces.</em>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -220,6 +319,9 @@
                             <p class="subtitle" id="results-meta-text">Completed scan details</p>
                         </div>
                         <div class="action-buttons">
+                            <button type="button" id="open-exec-report-results-btn" class="btn btn-secondary" style="border-color: rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.08); font-weight: 600;">
+                                <span class="btn-icon">📄</span> Executive Report (PDF)
+                            </button>
                             <button type="button" id="export-waf-bundle-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #7000ff 0%, #00f0ff 100%); border: none; font-weight: 700;">
                                 <span class="btn-icon">🛡️</span> One-Click Fix & WAF Bundle
                             </button>
@@ -993,6 +1095,285 @@
                     <button type="button" id="sim-next-btn" class="btn btn-secondary">
                         Next Threat Vector (LLM02) ↗
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CI/CD Continuous Scan & Webhook Hub Modal -->
+    <div id="webhook-modal" class="modal-backdrop hidden">
+        <div class="modal-card webhook-modal-card">
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <span class="badge badge-webhook-tag">⚡ CONTINUOUS SECURITY AUTOMATION</span>
+                    <h3 id="webhook-modal-title">CI/CD Pipeline Security Gate & Webhook Integration</h3>
+                </div>
+                <button type="button" id="close-webhook-modal-btn" class="close-btn">×</button>
+            </div>
+
+            <div class="modal-body webhook-modal-body">
+                <!-- Banner Meta Info -->
+                <div class="webhook-banner">
+                    <div class="webhook-banner-left">
+                        <span class="webhook-endpoint-label">ACTIVE WEBHOOK ENDPOINT:</span>
+                        <code id="webhook-endpoint-url" class="webhook-url-code">POST http://localhost:3000/api/webhook/scan</code>
+                    </div>
+                    <div class="webhook-banner-right">
+                        <button type="button" id="btn-test-webhook-trigger" class="btn btn-primary" style="font-size: 11px; padding: 6px 14px; background: linear-gradient(135deg, #00ff88 0%, #00f0ff 100%); color: #05050d; font-weight: 700; border: none;">
+                            🚀 Test Webhook Trigger
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Gate Threshold Configurator -->
+                <div class="webhook-gate-config">
+                    <h4 class="gate-config-title">🛡️ Pull Request Security Gate Thresholds</h4>
+                    <div class="gate-grid">
+                        <div class="gate-item">
+                            <label for="gate-min-score">Minimum Security Score (0-100)</label>
+                            <input type="number" id="gate-min-score" min="0" max="100" value="80" class="select-input" />
+                            <span class="gate-hint">PR fails if overall score drops below this.</span>
+                        </div>
+                        <div class="gate-item">
+                            <label for="gate-max-critical">Max Allowed Critical Vulnerabilities</label>
+                            <input type="number" id="gate-max-critical" min="0" max="10" value="0" class="select-input" />
+                            <span class="gate-hint">PR fails if critical findings exceed this count.</span>
+                        </div>
+                        <div class="gate-item">
+                            <label for="gate-max-high">Max Allowed High Vulnerabilities</label>
+                            <input type="number" id="gate-max-high" min="0" max="20" value="2" class="select-input" />
+                            <span class="gate-hint">PR fails if high findings exceed this count.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Integration Platform Tabs -->
+                <div class="waf-tabs-bar webhook-tabs-bar">
+                    <button type="button" class="webhook-tab-btn active" data-tab="github">
+                        <span class="tab-icon">🐙</span> GitHub Actions (.github/workflows)
+                    </button>
+                    <button type="button" class="webhook-tab-btn" data-tab="curl">
+                        <span class="tab-icon">⚡</span> cURL / Webhook Payload
+                    </button>
+                    <button type="button" class="webhook-tab-btn" data-tab="gitlab">
+                        <span class="tab-icon">🦊</span> GitLab CI (.gitlab-ci.yml)
+                    </button>
+                    <button type="button" class="webhook-tab-btn" data-tab="nodejs">
+                        <span class="tab-icon">📦</span> Node.js CI Script
+                    </button>
+                </div>
+
+                <!-- Code Editor / Preview Box -->
+                <div class="code-editor-box webhook-code-box">
+                    <div class="editor-top-bar">
+                        <div class="waf-editor-info">
+                            <span id="webhook-file-path" class="file-path">📁 .github/workflows/vibe-shield-security-gate.yml</span>
+                            <span id="webhook-file-desc" class="waf-file-desc">Continuous audit on PR and commit with security gate enforcement</span>
+                        </div>
+                        <div class="waf-editor-actions">
+                            <button type="button" id="webhook-copy-code-btn" class="btn btn-secondary copy-btn">
+                                <span class="copy-icon">📋</span> <span id="webhook-copy-btn-text">Copy Workflow YAML</span>
+                            </button>
+                        </div>
+                    </div>
+                    <pre><code id="webhook-code-content" class="code-content">// Generating CI/CD workflow...</code></pre>
+                </div>
+
+                <div id="webhook-test-result" class="webhook-test-result-box hidden">
+                    <!-- Webhook execution feedback -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Executive Security Audit Dossier (PDF Printable) Modal -->
+    <div id="executive-report-modal" class="modal-backdrop hidden">
+        <div class="modal-card exec-modal-card">
+            <div class="modal-header exec-modal-header no-print">
+                <div class="modal-title-wrap">
+                    <span class="badge badge-exec-tag">📄 EXECUTIVE AUDIT REPORT</span>
+                    <h3 id="exec-modal-title">Executive Security & Quality Dossier</h3>
+                </div>
+                <div class="exec-header-actions">
+                    <button type="button" id="exec-print-pdf-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #ffd700 0%, #ff8800 100%); color: #000; font-weight: 700; border: none;">
+                        🖨️ Print / Save as PDF
+                    </button>
+                    <button type="button" id="exec-copy-md-btn" class="btn btn-secondary">
+                        📋 Copy Markdown Briefing
+                    </button>
+                    <button type="button" id="close-exec-modal-btn" class="close-btn">×</button>
+                </div>
+            </div>
+
+            <div class="modal-body exec-modal-body" id="printable-exec-content">
+                <!-- Cover / Header Briefing Banner -->
+                <div class="exec-report-banner">
+                    <div class="exec-banner-top">
+                        <div class="exec-brand">
+                            <span class="exec-brand-icon">🛡️</span>
+                            <div>
+                                <h2>VIBE SHIELD SECURITY INTELLIGENCE</h2>
+                                <span class="exec-subhead">Autonomous Multi-Agent Application Security & Quality Audit Dossier</span>
+                            </div>
+                        </div>
+                        <div class="exec-badge-wrap">
+                            <span class="badge badge-confidential">CONFIDENTIAL // STAKEHOLDER DISTRIBUTION</span>
+                        </div>
+                    </div>
+
+                    <div class="exec-meta-grid">
+                        <div class="exec-meta-cell">
+                            <span class="meta-label">TARGET APPLICATION</span>
+                            <strong id="exec-meta-url" class="meta-val">https://app.com</strong>
+                        </div>
+                        <div class="exec-meta-cell">
+                            <span class="meta-label">AUDIT DATE & TIME</span>
+                            <strong id="exec-meta-date" class="meta-val">2026-09-19 12:00 UTC</strong>
+                        </div>
+                        <div class="exec-meta-cell">
+                            <span class="meta-label">ANALYSIS DURATION</span>
+                            <strong id="exec-meta-duration" class="meta-val">14.2s</strong>
+                        </div>
+                        <div class="exec-meta-cell">
+                            <span class="meta-label">SCANNER VERSION</span>
+                            <strong class="meta-val">v1.0.0 (6 Multi-Agents)</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Executive Posture & Score Overview -->
+                <div class="exec-score-section">
+                    <div class="exec-score-card">
+                        <div class="exec-score-circle" id="exec-score-circle">
+                            <span id="exec-grade-val" class="exec-grade">A</span>
+                            <span id="exec-score-val" class="exec-score-num">92/100</span>
+                        </div>
+                        <div class="exec-score-meta">
+                            <div class="exec-status-pill" id="exec-status-pill">PROTECTED & HARDENED</div>
+                            <h4>OVERALL SECURITY POSTURE GRADE</h4>
+                            <p id="exec-risk-statement" class="exec-risk-stmt">
+                                Zero critical vulnerabilities detected. Target application exhibits hardened perimeter defenses and verified AI guardrails.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Executive Sub-Category Breakdown -->
+                    <div class="exec-subscores-grid">
+                        <div class="exec-subscore-card">
+                            <div class="subscore-head">
+                                <span>🛡️ Perimeter & Headers</span>
+                                <strong id="exec-sub-headers">95%</strong>
+                            </div>
+                            <div class="progress-track"><div id="exec-bar-headers" class="progress-fill" style="width: 95%;"></div></div>
+                        </div>
+                        <div class="exec-subscore-card">
+                            <div class="subscore-head">
+                                <span>🤖 AI & Prompt Defense</span>
+                                <strong id="exec-sub-ai">100%</strong>
+                            </div>
+                            <div class="progress-track"><div id="exec-bar-ai" class="progress-fill" style="width: 100%;"></div></div>
+                        </div>
+                        <div class="exec-subscore-card">
+                            <div class="subscore-head">
+                                <span>🔑 API & Authentication</span>
+                                <strong id="exec-sub-api">90%</strong>
+                            </div>
+                            <div class="progress-track"><div id="exec-bar-api" class="progress-fill" style="width: 90%;"></div></div>
+                        </div>
+                        <div class="exec-subscore-card">
+                            <div class="subscore-head">
+                                <span>⚖️ Business Logic & Surface</span>
+                                <strong id="exec-sub-logic">88%</strong>
+                            </div>
+                            <div class="progress-track"><div id="exec-bar-logic" class="progress-fill" style="width: 88%;"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Severity Distribution Cards -->
+                <div class="exec-findings-summary">
+                    <div class="exec-sev-card sev-crit">
+                        <span class="sev-count" id="exec-crit-count">0</span>
+                        <span class="sev-label">CRITICAL (CVSS 9.0-10.0)</span>
+                    </div>
+                    <div class="exec-sev-card sev-high">
+                        <span class="sev-count" id="exec-high-count">1</span>
+                        <span class="sev-label">HIGH (CVSS 7.0-8.9)</span>
+                    </div>
+                    <div class="exec-sev-card sev-med">
+                        <span class="sev-count" id="exec-med-count">2</span>
+                        <span class="sev-label">MEDIUM (CVSS 4.0-6.9)</span>
+                    </div>
+                    <div class="exec-sev-card sev-low">
+                        <span class="sev-count" id="exec-low-count">3</span>
+                        <span class="sev-label">LOW (CVSS 0.1-3.9)</span>
+                    </div>
+                </div>
+
+                <!-- Compliance Readiness Matrix -->
+                <div class="exec-section">
+                    <h3 class="exec-section-title">🏛️ Enterprise Security & Regulatory Compliance Posture</h3>
+                    <div class="exec-compliance-grid">
+                        <div class="exec-comp-cell">
+                            <span class="comp-title">OWASP Web Top 10</span>
+                            <strong id="exec-comp-owasp" class="comp-status status-pass">✔ 94% Compliant</strong>
+                        </div>
+                        <div class="exec-comp-cell">
+                            <span class="comp-title">OWASP LLM AI Top 10</span>
+                            <strong id="exec-comp-llm" class="comp-status status-pass">✔ 98% Defended</strong>
+                        </div>
+                        <div class="exec-comp-cell">
+                            <span class="comp-title">SOC 2 Type II Security</span>
+                            <strong id="exec-comp-soc2" class="comp-status status-pass">✔ Ready for Audit</strong>
+                        </div>
+                        <div class="exec-comp-cell">
+                            <span class="comp-title">GDPR Data Privacy</span>
+                            <strong id="exec-comp-gdpr" class="comp-status status-pass">✔ Compliant</strong>
+                        </div>
+                        <div class="exec-comp-cell">
+                            <span class="comp-title">HIPAA Security Rule</span>
+                            <strong id="exec-comp-hipaa" class="comp-status status-pass">✔ Compliant</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Prioritized Executive Remediation Roadmap -->
+                <div class="exec-section">
+                    <h3 class="exec-section-title">🗺️ Strategic Remediation Roadmap</h3>
+                    <div class="exec-roadmap-list" id="exec-roadmap-container">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Top Vulnerabilities Table -->
+                <div class="exec-section">
+                    <h3 class="exec-section-title">🚨 Key Risk Findings & Vulnerability Breakdown</h3>
+                    <div class="table-responsive">
+                        <table class="exec-findings-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 15%;">CVSS / Severity</th>
+                                    <th style="width: 30%;">Vulnerability Description</th>
+                                    <th style="width: 25%;">Business Risk Impact</th>
+                                    <th style="width: 30%;">Recommended Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="exec-findings-tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Executive Sign-off Footer -->
+                <div class="exec-footer-signoff">
+                    <div class="signoff-left">
+                        <p><strong>Certified by:</strong> VIBE SHIELD Autonomous Multi-Agent Security Engine</p>
+                        <p class="text-dim">Generated automatically through dynamic surface discovery, active probing, and AI guardrail verification.</p>
+                    </div>
+                    <div class="signoff-right">
+                        <span class="audit-seal">🛡️ AUDIT VERIFIED</span>
+                    </div>
                 </div>
             </div>
         </div>

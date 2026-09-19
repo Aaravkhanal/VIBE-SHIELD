@@ -27,12 +27,109 @@ export class AuthManager {
 
     /**
      * Authenticate all configured credentials.
+     * If direct bearer token, custom cookies, or credentials are provided,
+     * it initializes the authenticated browser storageState and token maps.
      * If no credentials are configured but a login form is detected,
      * interactively prompts the user in the terminal.
      * Returns a Map of role → storageState for Playwright contexts.
      */
     async authenticate() {
+        const authConfig = this.config.auth || {};
         let credentials = this.config.credentials || [];
+        const role = authConfig.role || 'authenticated-user';
+
+        // 1. Direct Bearer Token / API Token Support
+        if (authConfig.bearer_token || authConfig.token) {
+            const token = authConfig.bearer_token || authConfig.token;
+            this.logger?.info?.(`Injecting configured Bearer token for role "${role}"...`);
+            try {
+                this._browser = await chromium.launch({ headless: true });
+                const context = await this._browser.newContext({ ignoreHTTPSErrors: true });
+                const page = await context.newPage();
+                try {
+                    await page.goto(this.config.target_url, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+                    await page.evaluate((tkn) => {
+                        localStorage.setItem('token', tkn);
+                        localStorage.setItem('access_token', tkn);
+                        localStorage.setItem('auth_token', tkn);
+                        localStorage.setItem('jwt', tkn);
+                        sessionStorage.setItem('token', tkn);
+                        sessionStorage.setItem('access_token', tkn);
+                    }, token).catch(() => {});
+                } catch {
+                    // Ignore navigation issues if target is API-only
+                }
+                const state = await context.storageState();
+                await page.close().catch(() => {});
+                await context.close().catch(() => {});
+                await this._browser.close().catch(() => {});
+                this._browser = null;
+
+                this.authStates.set(role, { state, postLoginUrl: authConfig.login_url || this.config.target_url, discoveredLinks: [] });
+                this.authTokens.set(role, { token, type: 'Bearer' });
+                this.logger?.info?.(`✔ Bearer token injected successfully for "${role}"`);
+                return this.authStates;
+            } catch (err) {
+                this.logger?.warn?.(`Failed to inject Bearer token: ${err.message}`);
+                if (this._browser) {
+                    await this._browser.close().catch(() => {});
+                    this._browser = null;
+                }
+            }
+        }
+
+        // 2. Direct Session Cookies Support
+        if (authConfig.cookie || authConfig.cookies) {
+            this.logger?.info?.(`Injecting configured session cookies for role "${role}"...`);
+            try {
+                this._browser = await chromium.launch({ headless: true });
+                const context = await this._browser.newContext({ ignoreHTTPSErrors: true });
+                const targetUrl = new URL(this.config.target_url);
+
+                let parsedCookies = [];
+                if (typeof authConfig.cookie === 'string') {
+                    parsedCookies = authConfig.cookie.split(';').map(part => {
+                        const idx = part.indexOf('=');
+                        if (idx === -1) return null;
+                        const name = part.substring(0, idx).trim();
+                        const value = part.substring(idx + 1).trim();
+                        if (!name) return null;
+                        return {
+                            name,
+                            value,
+                            domain: targetUrl.hostname,
+                            path: '/',
+                            httpOnly: false,
+                            secure: targetUrl.protocol === 'https:',
+                            sameSite: 'Lax'
+                        };
+                    }).filter(Boolean);
+                } else if (Array.isArray(authConfig.cookies)) {
+                    parsedCookies = authConfig.cookies;
+                }
+
+                if (parsedCookies.length > 0) {
+                    await context.addCookies(parsedCookies);
+                    const state = await context.storageState();
+                    await context.close().catch(() => {});
+                    await this._browser.close().catch(() => {});
+                    this._browser = null;
+
+                    this.authStates.set(role, { state, postLoginUrl: this.config.target_url, discoveredLinks: [] });
+                    this.logger?.info?.(`✔ ${parsedCookies.length} session cookie(s) injected for "${role}"`);
+                    return this.authStates;
+                }
+                await context.close().catch(() => {});
+                await this._browser.close().catch(() => {});
+                this._browser = null;
+            } catch (err) {
+                this.logger?.warn?.(`Failed to inject session cookies: ${err.message}`);
+                if (this._browser) {
+                    await this._browser.close().catch(() => {});
+                    this._browser = null;
+                }
+            }
+        }
 
         // If no credentials configured, check for login form and prompt interactively
         if (credentials.filter(c => c.username && c.password).length === 0) {
@@ -73,7 +170,6 @@ export class AuthManager {
         }
 
         // CLI flags or config provided credentials — authenticate them
-        const authConfig = this.config.auth || {};
         this._browser = await chromium.launch({ headless: true });
 
         for (const cred of credentials) {
