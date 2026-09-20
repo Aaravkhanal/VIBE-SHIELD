@@ -4318,14 +4318,14 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
         onScanComplete(status) {
             this.scanData = status;
             const report = status.report || {};
-            const summary = report.summary || {};
+            const summary = report.dedupSummary || report.summary || {};
             const total = summary.total || 0;
             const critical = summary.critical || 0;
-            const score = window.currentScoreData?.overallScore || '—';
-            const grade = window.currentScoreData?.grade || '—';
+            const score = status.score || status.report?.score || window.currentScoreData?.overallScore || '—';
+            const grade = status.grade || status.report?.grade || window.currentScoreData?.grade || '—';
             this.addMessage('bot',
-                `Scan complete! 🔍 Found ${total} findings (${critical} critical) on ${status.url}.\n\n` +
-                `Security grade: **${grade}** (${score}/100).\n\nAsk me anything — "what should I fix first?", "explain the XSS finding", or "how do I harden my headers?"`
+                `Scan complete! 🔍 Found **${total} findings** (${critical} critical) on ${status.url}.\n\n` +
+                `Security grade: **${grade}** (${score}/100).\n\nAsk me anything — "what should I fix first?", "explain the critical findings", or "give me suggestions to improve".`
             );
             // Update suggestions to scan-specific ones
             if (this.suggestionsEl) {
@@ -4334,7 +4334,7 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
                     'Explain the critical findings',
                     'How do I fix missing CSP headers?',
                     'What is my biggest risk?',
-                    'Generate a fix summary'
+                    'Give me suggestions to improve'
                 ].map(q => `<button type="button" class="chat-suggestion-btn" data-q="${q}">${q}</button>`).join('');
                 this.suggestionsEl.querySelectorAll('.chat-suggestion-btn').forEach(btn => {
                     btn.addEventListener('click', () => {
@@ -4373,9 +4373,9 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
             const query = q.toLowerCase();
             const report = this.scanData?.report || {};
             const findings = report.findings || [];
-            const summary = report.summary || {};
-            const score = window.currentScoreData?.overallScore;
-            const grade = window.currentScoreData?.grade;
+            const summary = report.dedupSummary || report.summary || {};
+            const score = this.scanData?.score || report.score || window.currentScoreData?.overallScore || '—';
+            const grade = this.scanData?.grade || report.grade || window.currentScoreData?.grade || '—';
             const url = this.scanData?.url || 'the target';
 
             // No scan yet

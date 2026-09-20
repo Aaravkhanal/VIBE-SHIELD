@@ -324,8 +324,14 @@ const server = http.createServer((req, res) => {
                         console.error('Error fetching report or saving logs:', err);
                     }
 
-                    // Save to history (cap at 50 entries to prevent unbounded memory growth)
                     const scoreData = scanData.report ? calculateSecurityScore(scanData.report) : { overallScore: 90, grade: 'A', gradeColor: '#00ff88', statusText: 'Protected' };
+                    scanData.score = scoreData.overallScore;
+                    scanData.grade = scoreData.grade;
+                    scanData.scoreData = scoreData;
+                    if (scanData.report) {
+                        scanData.report.score = scoreData.overallScore;
+                        scanData.report.grade = scoreData.grade;
+                    }
                     if (scanHistory.length >= 50) scanHistory.pop();
                     scanHistory.unshift({
                         scanId,

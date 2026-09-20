@@ -85,7 +85,7 @@ export class Crawler {
 
         try {
             // Build initial queue: target URL + seed links
-            const queue = [{ url: targetUrl, depth: 0 }];
+            const queue = [{ url: urlStr, depth: 0 }];
             for (const link of seedLinks) {
                 if (this._isSameOrigin(link)) {
                     queue.push({ url: link, depth: 0 });
