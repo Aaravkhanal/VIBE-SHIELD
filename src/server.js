@@ -40,6 +40,29 @@ function regenerateApiKey() {
     fs.writeFileSync(API_KEY_FILE, JSON.stringify({ key: VIBE_API_KEY, createdAt: new Date().toISOString() }));
     return VIBE_API_KEY;
 }
+
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+
+function getSettings() {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(SETTINGS_FILE)) {
+        const defaults = { geminiApiKey: process.env.GEMINI_API_KEY || '', openaiApiKey: process.env.OPENAI_API_KEY || '' };
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaults, null, 2));
+        return defaults;
+    }
+    try {
+        return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+    } catch (e) {
+        return {};
+    }
+}
+
+function saveSettings(newSettings) {
+    const current = getSettings();
+    const updated = { ...current, ...newSettings };
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2));
+    return updated;
+}
 // ─────────────────────────────────────────────────────────────────────────
 
 // In-memory store for scans
@@ -1077,6 +1100,140 @@ jobs:
                 const patch = generateAutoPatch(finding);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(patch));
+            } catch (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err.message }));
+            }
+        });
+        return;
+    }
+
+    // ── GET /api/settings ──────────────────────────────────────────
+    if (req.method === 'GET' && pathname === '/api/settings') {
+        const settings = getSettings();
+        // Mask API keys for security
+        const masked = {
+            geminiApiKey: settings.geminiApiKey ? '••••••••' + settings.geminiApiKey.slice(-4) : '',
+            hasGeminiKey: Boolean(settings.geminiApiKey || process.env.GEMINI_API_KEY),
+            openaiApiKey: settings.openaiApiKey ? '••••••••' + settings.openaiApiKey.slice(-4) : '',
+            hasOpenaiKey: Boolean(settings.openaiApiKey || process.env.OPENAI_API_KEY)
+        };
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(masked));
+        return;
+    }
+
+    // ── POST /api/settings ─────────────────────────────────────────
+    if (req.method === 'POST' && pathname === '/api/settings') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const newSettings = JSON.parse(body);
+                saveSettings(newSettings);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err.message }));
+            }
+        });
+        return;
+    }
+
+    // ── POST /api/chat — Intelligent AI Assistant Endpoint ────────
+    if (req.method === 'POST' && pathname === '/api/chat') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+            try {
+                const { prompt, scanId, report } = JSON.parse(body);
+                const settings = getSettings();
+                const geminiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
+                const openaiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY;
+
+                const scanContext = report || (scanId ? activeScans.get(scanId)?.report : null);
+
+                // 1. If Gemini API key is configured, call Gemini API
+                if (geminiKey) {
+                    try {
+                        const systemInstruction = `You are VIBE SHIELD AI Security Assistant, a elite Principal Application Security Engineer & QA Lead. You are answering a user query about a live security audit. Always be concise, direct, authoritative, and actionable. Format responses with bold text and bullet points where helpful.\n\nCurrent Audit Context:\nTarget: ${scanContext?.meta?.target || 'Not specified'}\nScore: ${scanContext?.score || 'N/A'}/100\nTotal Findings: ${scanContext?.dedupSummary?.total || scanContext?.summary?.total || 0} (${scanContext?.dedupSummary?.critical || 0} critical, ${scanContext?.dedupSummary?.high || 0} high)\nTop Findings: ${JSON.stringify((scanContext?.findings || []).slice(0, 5).map(f => ({ title: f.title, severity: f.severity, surface: f.affectedSurface })))}`;
+
+                        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{
+                                    parts: [
+                                        { text: systemInstruction },
+                                        { text: `User Question: ${prompt}` }
+                                    ]
+                                }]
+                            })
+                        });
+                        const gData = await gRes.json();
+                        const answerText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (answerText) {
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            return res.end(JSON.stringify({ response: answerText, provider: 'gemini' }));
+                        }
+                    } catch (e) {
+                        console.error('Gemini API Error:', e.message);
+                    }
+                }
+
+                // 2. If OpenAI API key is configured, call OpenAI API
+                if (openaiKey) {
+                    try {
+                        const oRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${openaiKey}`
+                            },
+                            body: JSON.stringify({
+                                model: 'gpt-4o-mini',
+                                messages: [
+                                    { role: 'system', content: `You are VIBE SHIELD AI Security Assistant, a elite Principal Application Security Engineer & QA Lead. Answer user queries concisely and directly based on their security scan data.\nContext: Target ${scanContext?.meta?.target || 'N/A'}, Total findings: ${scanContext?.dedupSummary?.total || 0}` },
+                                    { role: 'user', content: prompt }
+                                ]
+                            })
+                        });
+                        const oData = await oRes.json();
+                        const answerText = oData?.choices?.[0]?.message?.content;
+                        if (answerText) {
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            return res.end(JSON.stringify({ response: answerText, provider: 'openai' }));
+                        }
+                    } catch (e) {
+                        console.error('OpenAI API Error:', e.message);
+                    }
+                }
+
+                // 3. Built-in Local Security Intelligence Engine (Zero API Key Fallback)
+                let responseText = '';
+                const q = prompt.toLowerCase();
+                const findings = scanContext?.findings || [];
+                const summary = scanContext?.dedupSummary || scanContext?.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
+                const targetUrl = scanContext?.meta?.target || 'the website';
+
+                if (q.includes('score') || q.includes('grade') || q.includes('rating')) {
+                    responseText = `Target **${targetUrl}** has a Security Score of **${scanContext?.score || 85}/100**.\n\nSummary:\n• Critical: ${summary.critical}\n• High: ${summary.high}\n• Medium: ${summary.medium}\n• Low: ${summary.low}\n\nTop priority: Address critical and high-severity issues first.`;
+                } else if (q.includes('critical') || q.includes('fix first') || q.includes('priority')) {
+                    const crits = findings.filter(f => f.severity === 'critical');
+                    if (crits.length > 0) {
+                        responseText = `Fix these **${crits.length} critical** findings immediately:\n\n${crits.map((f, i) => `${i + 1}. **${f.title}** (${f.affectedSurface || f.url || ''})\n   Recommendation: ${f.recommendation || 'Apply input sanitization and secure header controls.'}`).join('\n\n')}`;
+                    } else {
+                        responseText = `No critical vulnerabilities detected on ${targetUrl}! ✅ Focus on the high and medium findings in your report.`;
+                    }
+                } else if (q.includes('xss') || q.includes('scripting')) {
+                    responseText = `To prevent XSS (Cross-Site Scripting):\n1. Sanitize all user inputs server-side\n2. Encode HTML output before rendering into the DOM\n3. Set strict \`Content-Security-Policy\` headers\n4. Use \`HttpOnly\` and \`SameSite=Lax/Strict\` flags on all session cookies.`;
+                } else {
+                    responseText = `Analyzed **${targetUrl}** (${summary.total} findings total: ${summary.critical} critical, ${summary.high} high, ${summary.medium} medium).\n\nYou can ask:\n• "What are the critical vulnerabilities?"\n• "How do I fix XSS?"\n• "What should I prioritize fixing first?"\n• "Explain my security score"`;
+                }
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ response: responseText, provider: 'local-engine' }));
             } catch (err) {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err.message }));

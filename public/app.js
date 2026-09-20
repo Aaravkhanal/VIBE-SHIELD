@@ -4444,10 +4444,30 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
             this.inputEl.value = '';
             this.addMessage('user', text);
             const typing = this.showTyping();
-            await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
+
+            let responseText = '';
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: text,
+                        scanId: this.scanData?.scanId,
+                        report: this.scanData?.report
+                    })
+                });
+                const data = await res.json();
+                if (data && data.response) {
+                    responseText = data.response;
+                } else {
+                    responseText = this.answer(text);
+                }
+            } catch (err) {
+                responseText = this.answer(text);
+            }
+
             if (typing) typing.remove();
-            const response = this.answer(text);
-            this.addMessage('bot', response);
+            this.addMessage('bot', responseText);
         }
     }
 
@@ -4459,7 +4479,21 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
     let apiKeyRevealed = false;
     let cachedApiKey = null;
 
+    async function loadSettings() {
+        try {
+            const res = await fetch('/api/settings');
+            if (res.ok) {
+                const s = await res.json();
+                const gInput = document.getElementById('gemini-api-key-input');
+                const oInput = document.getElementById('openai-api-key-input');
+                if (gInput && s.geminiApiKey) gInput.placeholder = s.geminiApiKey;
+                if (oInput && s.openaiApiKey) oInput.placeholder = s.openaiApiKey;
+            }
+        } catch (e) {}
+    }
+
     async function loadApiKey() {
+        await loadSettings();
         const display = document.getElementById('api-key-display-text');
         if (!display) return;
         try {
@@ -4478,6 +4512,32 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
         } catch (e) {
             display.textContent = 'Server unavailable';
         }
+    }
+
+    const saveLlmBtn = document.getElementById('save-llm-settings-btn');
+    if (saveLlmBtn) {
+        saveLlmBtn.addEventListener('click', async () => {
+            const geminiVal = document.getElementById('gemini-api-key-input')?.value.trim();
+            const openaiVal = document.getElementById('openai-api-key-input')?.value.trim();
+            const payload = {};
+            if (geminiVal) payload.geminiApiKey = geminiVal;
+            if (openaiVal) payload.openaiApiKey = openaiVal;
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    showToast('AI Settings saved successfully!', 'success');
+                    await loadSettings();
+                } else {
+                    showToast('Failed to save settings', 'error');
+                }
+            } catch (e) {
+                showToast('Error saving settings', 'error');
+            }
+        });
     }
 
     const revealBtn = document.getElementById('reveal-api-key-btn');
