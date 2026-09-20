@@ -1,1384 +1,821 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VIBE SHIELD — Autonomous Security & Quality Intelligence</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VIBE SHIELD — Autonomous Security Intelligence</title>
+  <meta name="description" content="Enter any URL and VIBE SHIELD autonomously audits it like a cybersecurity expert — finding vulnerabilities, rating performance, and telling you exactly what to fix.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- Top Navigation -->
-        <header class="header">
-            <div class="brand">
-                <div class="brand-logo">🛡️</div>
-                <div class="brand-text">
-                    <h1>VIBE SHIELD</h1>
-                    <span class="badge version-badge">v1.0.0</span>
-                </div>
-            </div>
-            <div class="history-status" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <button type="button" id="open-cvss-lab-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.08);">
-                    <span class="btn-icon">🎯</span> CVSS v3.1 Lab
-                </button>
-                <button type="button" id="open-waf-modal-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(112, 0, 255, 0.4); background: rgba(112, 0, 255, 0.08);">
-                    <span class="btn-icon">🛡️</span> Fix & WAF Exporter
-                </button>
-                <button type="button" id="open-ai-matrix-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(255, 0, 128, 0.4); background: rgba(255, 0, 128, 0.08);">
-                    <span class="btn-icon">⚔️</span> AI Threat Matrix
-                </button>
-                <button type="button" id="open-cicd-modal-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(0, 255, 136, 0.4); background: rgba(0, 255, 136, 0.08);">
-                    <span class="btn-icon">⚡</span> CI/CD & Webhook Hub
-                </button>
-                <button type="button" id="open-exec-modal-header-btn" class="btn btn-secondary btn-header-action" style="font-size: 11px; padding: 6px 10px; border-color: rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.08);">
-                    <span class="btn-icon">📄</span> Executive Report (PDF)
-                </button>
-                <span class="header-status">
-                    <span class="status-indicator active"></span>
-                    <span class="status-text">Multi-Agent System Ready</span>
-                </span>
-            </div>
-        </header>
+<div class="app-shell">
 
-        <!-- Main Content Area -->
-        <main class="main-content">
-            <!-- Hero Scanner Section -->
-            <section class="card scanner-card">
-                <div class="card-header">
-                    <h2>Target Application Scanner</h2>
-                    <p class="subtitle">Autonomous multi-agent QA, Security, AI & API vulnerability scanner for vibe-coded apps</p>
-                </div>
-                
-                <form id="scan-form" class="scan-form">
-                    <div class="input-group">
-                        <div class="url-input-wrapper">
-                            <span class="input-icon">🌐</span>
-                            <input type="text" id="target-url" placeholder="enter app URL (e.g. jubidate-ai.vercel.app or https://your-app.com)" required autocomplete="off" />
-                        </div>
-                        <button type="submit" id="start-scan-btn" class="btn btn-primary">
-                            <span class="btn-text">Start Autonomous Scan</span>
-                            <span class="btn-icon">⚡</span>
-                        </button>
-                    </div>
+  <!-- ═══ HEADER ══════════════════════════════════════════════ -->
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="/">
+        <span class="brand-name">VIBE SHIELD</span>
+        <span class="brand-dot"></span>
+      </a>
 
-                    <!-- Scan Configuration Options -->
-                    <div class="config-grid">
-                        <div class="config-group">
-                            <label>Module Selection</label>
-                            <div class="module-chips">
-                                <label class="chip active"><input type="checkbox" name="modules" value="qa" checked /> <span>QA & Functional</span></label>
-                                <label class="chip active"><input type="checkbox" name="modules" value="security" checked /> <span>Security Probing</span></label>
-                                <label class="chip active"><input type="checkbox" name="modules" value="ai" checked /> <span>AI & Prompts</span></label>
-                                <label class="chip active"><input type="checkbox" name="modules" value="logic" checked /> <span>Business Logic</span></label>
-                                <label class="chip active"><input type="checkbox" name="modules" value="api" checked /> <span>API & Auth</span></label>
-                            </div>
-                        </div>
+      <nav class="site-nav">
+        <button type="button" id="nav-history-btn">Scan History</button>
+        <span class="nav-divider"></span>
+        <button type="button" id="nav-cicd-btn">CI/CD</button>
+        <button type="button" id="nav-waf-btn">WAF Rules</button>
+        <button type="button" id="nav-threat-btn">Threat Matrix</button>
+        <button type="button" id="nav-report-btn">PDF Report</button>
+        <span class="nav-divider"></span>
+        <button type="button" id="nav-settings-btn">Settings</button>
+      </nav>
 
-                        <div class="config-group">
-                            <label>Safety Tier</label>
-                            <select id="safety-mode" class="select-input">
-                                <option value="safe-active" selected>Safe-Active (Non-destructive probing)</option>
-                                <option value="passive">Passive (Recon & Static only)</option>
-                                <option value="aggressive">Aggressive (Full state-mutation probing)</option>
-                            </select>
-                        </div>
-
-                        <div class="config-group">
-                            <label>Crawl Limit</label>
-                            <select id="max-pages" class="select-input">
-                                <option value="10">Quick Scan (Max 10 pages)</option>
-                                <option value="25" selected>Standard Scan (Max 25 pages)</option>
-                                <option value="50">Deep Scan (Max 50 pages)</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Advanced Authentication Drawer -->
-                    <div class="auth-drawer-wrapper">
-                        <button type="button" id="toggle-auth-drawer-btn" class="auth-drawer-toggle">
-                            <span class="auth-drawer-toggle-left">
-                                <span class="auth-toggle-icon">🔐</span>
-                                <span class="auth-toggle-title">Authentication & Internal Dashboard Credentials (Optional)</span>
-                            </span>
-                            <span id="auth-drawer-badge" class="badge badge-unauth">Public Mode</span>
-                            <span id="auth-drawer-arrow" class="auth-drawer-arrow">▼</span>
-                        </button>
-                        <div id="auth-drawer-content" class="auth-drawer-body hidden">
-                            <div class="auth-strategy-nav">
-                                <label class="auth-tab-chip active" data-auth-strategy="none">
-                                    <input type="radio" name="auth-strategy" value="none" checked />
-                                    <span>🌐 Public (No Auth)</span>
-                                </label>
-                                <label class="auth-tab-chip" data-auth-strategy="form">
-                                    <input type="radio" name="auth-strategy" value="form" />
-                                    <span>🔑 Form Login (User & Password)</span>
-                                </label>
-                                <label class="auth-tab-chip" data-auth-strategy="token">
-                                    <input type="radio" name="auth-strategy" value="token" />
-                                    <span>🛡️ Bearer Token / JWT</span>
-                                </label>
-                                <label class="auth-tab-chip" data-auth-strategy="cookie">
-                                    <input type="radio" name="auth-strategy" value="cookie" />
-                                    <span>🍪 Session Cookies</span>
-                                </label>
-                            </div>
-
-                            <!-- Form Auth Input Block -->
-                            <div id="auth-panel-form" class="auth-panel-fields hidden">
-                                <div class="auth-fields-row">
-                                    <div class="auth-field-col">
-                                        <label for="auth-login-url">Login Page URL</label>
-                                        <input type="text" id="auth-login-url" placeholder="https://your-app.com/login (optional auto-discovery)" />
-                                    </div>
-                                    <div class="auth-field-col">
-                                        <label for="auth-role-name">Authenticated Role Label</label>
-                                        <input type="text" id="auth-role-name" placeholder="admin" value="admin" />
-                                    </div>
-                                </div>
-                                <div class="auth-fields-row">
-                                    <div class="auth-field-col">
-                                        <label for="auth-username">Username / Email</label>
-                                        <input type="text" id="auth-username" placeholder="test-account@your-app.com" autocomplete="off" />
-                                    </div>
-                                    <div class="auth-field-col">
-                                        <label for="auth-password">Password</label>
-                                        <input type="password" id="auth-password" placeholder="••••••••••••" autocomplete="off" />
-                                    </div>
-                                </div>
-                                <div class="auth-hint-text">
-                                    💡 <em>VIBE SHIELD will launch a headless browser session, fill the login form, extract auth state & storage tokens, and crawl internal dashboards under this role.</em>
-                                </div>
-                            </div>
-
-                            <!-- Bearer Token Input Block -->
-                            <div id="auth-panel-token" class="auth-panel-fields hidden">
-                                <div class="auth-fields-row">
-                                    <div class="auth-field-col" style="flex: 2;">
-                                        <label for="auth-bearer-token">JWT / Bearer Token String</label>
-                                        <input type="text" id="auth-bearer-token" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... or Bearer token" />
-                                    </div>
-                                    <div class="auth-field-col">
-                                        <label for="auth-token-role">Role Label</label>
-                                        <input type="text" id="auth-token-role" placeholder="api-user" value="authenticated-user" />
-                                    </div>
-                                </div>
-                                <div class="auth-hint-text">
-                                    💡 <em>Injected automatically into outgoing API headers and browser localStorage (<code>token</code>, <code>access_token</code>) for authenticated single-page apps.</em>
-                                </div>
-                            </div>
-
-                            <!-- Session Cookies Input Block -->
-                            <div id="auth-panel-cookie" class="auth-panel-fields hidden">
-                                <div class="auth-fields-row">
-                                    <div class="auth-field-col" style="flex: 2;">
-                                        <label for="auth-cookies">Session Cookie String</label>
-                                        <input type="text" id="auth-cookies" placeholder="session_id=s%3Aabc123; connect.sid=456; auth_user=789" />
-                                    </div>
-                                    <div class="auth-field-col">
-                                        <label for="auth-cookie-role">Role Label</label>
-                                        <input type="text" id="auth-cookie-role" placeholder="session-user" value="session-user" />
-                                    </div>
-                                </div>
-                                <div class="auth-hint-text">
-                                    💡 <em>Injected directly into the Playwright browser context to bypass login pages and access authenticated portal surfaces.</em>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </form>
-            </section>
-
-            <!-- Live Scan Progress Grid (Hidden by default) -->
-            <section id="scan-progress-section" class="progress-section hidden">
-                <div class="section-title-bar">
-                    <div class="title-with-spinner">
-                        <div class="spinner"></div>
-                        <h3>Scanning Target: <span id="current-target-display"></span></h3>
-                    </div>
-                    <div id="scan-timer" class="timer">00:00</div>
-                </div>
-
-                <!-- 6 Agent Cards Grid -->
-                <div class="agents-grid">
-                    <div class="agent-card" id="agent-crawl">
-                        <div class="agent-header">
-                            <span class="agent-icon">🕸️</span>
-                            <div class="agent-info">
-                                <h4>VIBE-SHIELD-CRAWL</h4>
-                                <span class="agent-role">App Surface Inventory & Crawler</span>
-                            </div>
-                            <span class="agent-badge badge-pending">Waiting</span>
-                        </div>
-                        <div class="agent-log">Waiting for execution...</div>
-                    </div>
-
-                    <div class="agent-card" id="agent-qa">
-                        <div class="agent-header">
-                            <span class="agent-icon">🧪</span>
-                            <div class="agent-info">
-                                <h4>VIBE-SHIELD-QA</h4>
-                                <span class="agent-role">Quality & Functional Testing</span>
-                            </div>
-                            <span class="agent-badge badge-pending">Waiting</span>
-                        </div>
-                        <div class="agent-log">Waiting for surface inventory...</div>
-                    </div>
-
-                    <div class="agent-card" id="agent-sec">
-                        <div class="agent-header">
-                            <span class="agent-icon">🛡️</span>
-                            <div class="agent-info">
-                                <h4>VIBE-SHIELD-SEC</h4>
-                                <span class="agent-role">Security & Vulnerabilities</span>
-                            </div>
-                            <span class="agent-badge badge-pending">Waiting</span>
-                        </div>
-                        <div class="agent-log">Waiting for surface inventory...</div>
-                    </div>
-
-                    <div class="agent-card" id="agent-ai">
-                        <div class="agent-header">
-                            <span class="agent-icon">🤖</span>
-                            <div class="agent-info">
-                                <h4>VIBE-SHIELD-AI</h4>
-                                <span class="agent-role">Prompt Injection & LLM Abuse</span>
-                            </div>
-                            <span class="agent-badge badge-pending">Waiting</span>
-                        </div>
-                        <div class="agent-log">Waiting for surface inventory...</div>
-                    </div>
-
-                    <div class="agent-card" id="agent-logic">
-                        <div class="agent-header">
-                            <span class="agent-icon">⚖️</span>
-                            <div class="agent-info">
-                                <h4>VIBE-SHIELD-LOGIC</h4>
-                                <span class="agent-role">Business Rule Validation</span>
-                            </div>
-                            <span class="agent-badge badge-pending">Waiting</span>
-                        </div>
-                        <div class="agent-log">Waiting for surface inventory...</div>
-                    </div>
-
-                    <div class="agent-card" id="agent-api">
-                        <div class="agent-header">
-                            <span class="agent-icon">🔌</span>
-                            <div class="agent-info">
-                                <h4>VIBE-SHIELD-API</h4>
-                                <span class="agent-role">API & Auth Flow Auditing</span>
-                            </div>
-                            <span class="agent-badge badge-pending">Waiting</span>
-                        </div>
-                        <div class="agent-log">Waiting for surface inventory...</div>
-                    </div>
-                </div>
-
-                <!-- Live Multi-Agent Scan Terminal Console -->
-                <div class="terminal-container" id="terminal-feed-container">
-                    <div class="terminal-header">
-                        <div class="terminal-controls">
-                            <span class="terminal-dot red"></span>
-                            <span class="terminal-dot yellow"></span>
-                            <span class="terminal-dot green"></span>
-                            <span class="terminal-title">⚡ VIBE-SHIELD LIVE SCAN CONSOLE (STDOUT / STDERR)</span>
-                            <span class="terminal-live-badge"><span class="terminal-pulse"></span> LIVE</span>
-                        </div>
-                        <div class="terminal-actions">
-                            <div class="terminal-filters" id="terminal-filter-group">
-                                <button type="button" class="terminal-filter-btn active" data-filter="all">ALL</button>
-                                <button type="button" class="terminal-filter-btn" data-filter="CRAWL">CRAWL</button>
-                                <button type="button" class="terminal-filter-btn" data-filter="SEC">SECURITY</button>
-                                <button type="button" class="terminal-filter-btn" data-filter="AI">AI</button>
-                                <button type="button" class="terminal-filter-btn" data-filter="QA">QA</button>
-                                <button type="button" class="terminal-filter-btn" data-filter="LOGIC">LOGIC</button>
-                                <button type="button" class="terminal-filter-btn" data-filter="API">API</button>
-                            </div>
-                            <label class="terminal-toggle" title="Auto-scroll as new output arrives">
-                                <input type="checkbox" id="terminal-autoscroll" checked>
-                                <span>Auto-scroll</span>
-                            </label>
-                            <button type="button" id="terminal-copy-btn" class="terminal-btn" title="Copy Logs to Clipboard">📋 Copy</button>
-                            <button type="button" id="terminal-clear-btn" class="terminal-btn" title="Clear View">🗑️ Clear</button>
-                        </div>
-                    </div>
-                    <div class="terminal-body" id="terminal-output">
-                        <div class="terminal-line system"><span class="t-stamp">[00:00:00]</span> <span class="t-agent">[VIBE-SHIELD]</span> <span class="t-msg">Autonomous intelligence engine initialized. Awaiting dispatch...</span></div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Results & Findings Section -->
-            <section id="results-section" class="results-section hidden">
-                <div class="card">
-                    <div class="card-header results-header">
-                        <div>
-                            <h2>Scan Results & Findings</h2>
-                            <p class="subtitle" id="results-meta-text">Completed scan details</p>
-                        </div>
-                        <div class="action-buttons">
-                            <button type="button" id="open-exec-report-results-btn" class="btn btn-secondary" style="border-color: rgba(255, 215, 0, 0.4); background: rgba(255, 215, 0, 0.08); font-weight: 600;">
-                                <span class="btn-icon">📄</span> Executive Report (PDF)
-                            </button>
-                            <button type="button" id="export-waf-bundle-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #7000ff 0%, #00f0ff 100%); border: none; font-weight: 700;">
-                                <span class="btn-icon">🛡️</span> One-Click Fix & WAF Bundle
-                            </button>
-                            <button type="button" id="toggle-results-terminal-btn" class="btn btn-secondary">📺 View Execution Logs</button>
-                            <button type="button" id="view-report-html-btn" class="btn btn-secondary">Open Full HTML Report ↗</button>
-                        </div>
-                    </div>
-
-                    <!-- Vibe Security Score & Badge Card -->
-                    <div class="score-audit-container">
-                        <div class="score-main-block">
-                            <div class="score-gauge-wrap">
-                                <div class="score-circle" id="score-circle">
-                                    <span id="score-grade-text" class="score-grade">A</span>
-                                    <span id="score-number-text" class="score-val">94/100</span>
-                                </div>
-                            </div>
-                            <div class="score-text-wrap">
-                                <span class="badge" id="score-posture-badge">VIBE SECURITY POSTURE</span>
-                                <h3 id="score-status-text">Fortified & Hardened</h3>
-                                <p class="subtitle" id="score-summary-desc">Multi-agent compound threat analysis completed.</p>
-                            </div>
-                        </div>
-
-                        <!-- Sub-Category Breakdown Bars -->
-                        <div class="subscores-grid">
-                            <div class="subscore-item">
-                                <div class="subscore-head">
-                                    <span>🛡️ Headers & Perimeter</span>
-                                    <span id="subscore-val-headers">95%</span>
-                                </div>
-                                <div class="progress-track"><div id="subscore-bar-headers" class="progress-fill" style="width: 95%;"></div></div>
-                            </div>
-                            <div class="subscore-item">
-                                <div class="subscore-head">
-                                    <span>🤖 AI & Prompt Defense</span>
-                                    <span id="subscore-val-ai">100%</span>
-                                </div>
-                                <div class="progress-track"><div id="subscore-bar-ai" class="progress-fill" style="width: 100%;"></div></div>
-                            </div>
-                            <div class="subscore-item">
-                                <div class="subscore-head">
-                                    <span>🔑 API & Auth Hardening</span>
-                                    <span id="subscore-val-api">90%</span>
-                                </div>
-                                <div class="progress-track"><div id="subscore-bar-api" class="progress-fill" style="width: 90%;"></div></div>
-                            </div>
-                            <div class="subscore-item">
-                                <div class="subscore-head">
-                                    <span>⚖️ Logic & Surface Hygiene</span>
-                                    <span id="subscore-val-logic">88%</span>
-                                </div>
-                                <div class="progress-track"><div id="subscore-bar-logic" class="progress-fill" style="width: 88%;"></div></div>
-                            </div>
-                        </div>
-
-                        <!-- Dynamic GitHub Badge Widget -->
-                        <div class="badge-export-box">
-                            <div class="badge-preview-area">
-                                <span class="badge-label">OFFICIAL REPO BADGE:</span>
-                                <div id="live-badge-container">
-                                    <!-- Rendered live badge -->
-                                </div>
-                            </div>
-                            <div class="badge-copy-actions">
-                                <button type="button" id="copy-badge-md-btn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;">
-                                    📋 Copy Markdown Badge
-                                </button>
-                                <button type="button" id="copy-badge-html-btn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;">
-                                    📋 Copy HTML Embed
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Severity Summary Pills -->
-                    <div class="severity-summary-bar">
-                        <div class="summary-pill pill-critical">
-                            <span class="pill-count" id="count-critical">0</span>
-                            <span class="pill-label">Critical</span>
-                        </div>
-                        <div class="summary-pill pill-high">
-                            <span class="pill-count" id="count-high">0</span>
-                            <span class="pill-label">High</span>
-                        </div>
-                        <div class="summary-pill pill-medium">
-                            <span class="pill-count" id="count-medium">0</span>
-                            <span class="pill-label">Medium</span>
-                        </div>
-                        <div class="summary-pill pill-low">
-                            <span class="pill-count" id="count-low">0</span>
-                            <span class="pill-label">Low</span>
-                        </div>
-                        <div class="summary-pill pill-total">
-                            <span class="pill-count" id="count-total">0</span>
-                            <span class="pill-label">Total Findings</span>
-                        </div>
-                    </div>
-
-                    <!-- Radial Site Map & Surface Tree (Attack Surface Topology) -->
-                    <div class="threat-map-container" id="sitemap-container" style="margin-bottom: 28px;">
-                        <div class="threat-map-header">
-                            <div>
-                                <h3>🗺️ Interactive Radial Site Map & Surface Topology</h3>
-                                <p class="subtitle" id="sitemap-meta-subtitle">Orbital attack surface visualization mapping routes, auth walls, and API endpoints</p>
-                            </div>
-                            <div class="threat-map-controls">
-                                <div class="sitemap-search-wrap">
-                                    <input type="text" id="sitemap-search-input" placeholder="🔍 Search route or API..." class="sitemap-search-field" />
-                                </div>
-                                <div class="terminal-filters" id="sitemap-filter-group">
-                                    <button type="button" class="terminal-filter-btn active" data-sitemap-filter="all">ALL</button>
-                                    <button type="button" class="terminal-filter-btn" data-sitemap-filter="api">⚡ APIs</button>
-                                    <button type="button" class="terminal-filter-btn" data-sitemap-filter="auth">🔒 Auth Gated</button>
-                                    <button type="button" class="terminal-filter-btn" data-sitemap-filter="vuln">🚨 Vulnerable</button>
-                                    <button type="button" class="terminal-filter-btn" data-sitemap-filter="page">🌐 Pages</button>
-                                </div>
-                                <button type="button" id="btn-toggle-sitemap-layout" class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;">Mode: 🪐 Radial</button>
-                                <button type="button" id="btn-reset-sitemap" class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;">Reset View</button>
-                            </div>
-                        </div>
-                        
-                        <div class="threat-canvas-wrapper" style="height: 480px;">
-                            <canvas id="sitemap-graph-canvas"></canvas>
-                            <div id="sitemap-node-inspector" class="threat-inspector hidden">
-                                <div class="inspector-header">
-                                    <span id="sitemap-inspector-badge" class="badge">API ENDPOINT</span>
-                                    <button type="button" id="close-sitemap-inspector-btn" class="close-btn">×</button>
-                                </div>
-                                <h4 id="sitemap-inspector-title">/api/models</h4>
-                                <div class="inspector-field">
-                                    <label>SURFACE CLASSIFICATION</label>
-                                    <div id="sitemap-inspector-type" class="inspector-val">Rest API (JSON)</div>
-                                </div>
-                                <div class="inspector-field">
-                                    <label>AUTH & ACCESS BOUNDARY</label>
-                                    <div id="sitemap-inspector-auth" class="inspector-val">Public Endpoint</div>
-                                </div>
-                                <div class="inspector-field">
-                                    <label>ASSOCIATED VULNERABILITIES</label>
-                                    <div id="sitemap-inspector-vulns" class="inspector-val">2 Findings Detected</div>
-                                </div>
-                                <div class="inspector-field">
-                                    <label>DISCOVERED FORMS & INPUTS</label>
-                                    <div id="sitemap-inspector-inputs" class="inspector-val code-block">None</div>
-                                </div>
-                                <button type="button" id="sitemap-filter-table-btn" class="btn btn-primary" style="width: 100%; margin-top: 10px; font-size: 11px; padding: 6px 12px;">
-                                    🔍 Filter Findings for this Route
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Site Map Legend -->
-                        <div class="threat-legend">
-                            <div class="legend-item"><span class="legend-dot" style="background: #00ff88; box-shadow: 0 0 8px #00ff88;"></span> <span>🌐 Public Page</span></div>
-                            <div class="legend-item"><span class="legend-dot" style="background: #00e5ff; box-shadow: 0 0 8px #00e5ff;"></span> <span>⚡ API Endpoint</span></div>
-                            <div class="legend-item"><span class="legend-dot" style="background: #ffb700; box-shadow: 0 0 8px #ffb700;"></span> <span>🔒 Auth-Protected Boundary</span></div>
-                            <div class="legend-item"><span class="legend-dot" style="background: #bd00ff; box-shadow: 0 0 8px #bd00ff;"></span> <span>📝 Form / Input Surface</span></div>
-                            <div class="legend-item"><span class="legend-dot" style="background: #ff3366; box-shadow: 0 0 8px #ff3366;"></span> <span>🚨 Vulnerable Surface</span></div>
-                        </div>
-                    </div>
-
-                    <!-- Attack Vector Chaining Graph (Cyber Threat Map) -->
-                    <div class="threat-map-container">
-                        <div class="threat-map-header">
-                            <div>
-                                <h3>🕸️ Interactive Attack Vector Chaining Graph</h3>
-                                <p class="subtitle">Multi-stage exploit paths modeled from correlated vulnerability primitives</p>
-                            </div>
-                            <div class="threat-map-controls">
-                                <button type="button" id="btn-reset-graph" class="btn btn-secondary" style="padding: 6px 12px; font-size: 11px;">Reset View</button>
-                                <button type="button" id="btn-pulse-paths" class="btn btn-primary" style="padding: 6px 12px; font-size: 11px;">Simulate Exploit Trajectory ⚡</button>
-                            </div>
-                        </div>
-                        
-                        <div class="threat-canvas-wrapper">
-                            <canvas id="threat-graph-canvas"></canvas>
-                            <div id="threat-node-inspector" class="threat-inspector hidden">
-                                <div class="inspector-header">
-                                    <span id="inspector-badge" class="badge">THREAT NODE</span>
-                                    <button type="button" id="close-inspector-btn" class="close-btn">×</button>
-                                </div>
-                                <h4 id="inspector-title">Node Title</h4>
-                                <div class="inspector-field">
-                                    <label>STAGE IN EXPLOIT CHAIN</label>
-                                    <div id="inspector-stage" class="inspector-val">Initial Access</div>
-                                </div>
-                                <div class="inspector-field">
-                                    <label>EXPLOITATION MECHANISM & IMPACT</label>
-                                    <div id="inspector-impact" class="inspector-val">Description</div>
-                                </div>
-                                <div class="inspector-field">
-                                    <label>PREVENTION & DEFENSE FIX</label>
-                                    <div id="inspector-fix" class="inspector-val code-block">Code Fix</div>
-                                </div>
-                                <button type="button" id="inspector-patch-btn" class="btn btn-primary hidden" style="width: 100%; margin-top: 10px; font-size: 11px; padding: 6px 12px;">
-                                    ⚡ Open AI Auto-Patch Fix
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Legend -->
-                        <div class="threat-legend">
-                            <div class="legend-item"><span class="legend-dot dot-surface"></span> <span>Target Entry Point</span></div>
-                            <div class="legend-item"><span class="legend-dot dot-vuln"></span> <span>Vulnerability Finding</span></div>
-                            <div class="legend-item"><span class="legend-dot dot-primitive"></span> <span>Exploitation Primitive</span></div>
-                            <div class="legend-item"><span class="legend-dot dot-impact"></span> <span>Compounded Threat Impact</span></div>
-                        </div>
-                    </div>
-
-                    <!-- Findings Table -->
-                    <div class="table-responsive">
-                        <table class="findings-table">
-                            <thead>
-                                <tr>
-                                    <th>CVSS v3.1</th>
-                                    <th>Severity</th>
-                                    <th>Vulnerability Title & Vector</th>
-                                    <th>Agent Module</th>
-                                    <th>Affected Surface</th>
-                                    <th>OWASP Category</th>
-                                    <th>Remediation & Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="findings-table-body">
-                                <tr>
-                                    <td colspan="7" class="empty-state">No findings detected yet.</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Results Execution Logs Terminal Drawer -->
-                    <div id="results-terminal-drawer" class="terminal-container hidden" style="margin-top: 24px;">
-                        <div class="terminal-header">
-                            <div class="terminal-controls">
-                                <span class="terminal-dot red"></span>
-                                <span class="terminal-dot yellow"></span>
-                                <span class="terminal-dot green"></span>
-                                <span class="terminal-title">📜 EXECUTION LOGS AUDIT (<span id="results-terminal-scan-id">SCAN LOGS</span>)</span>
-                            </div>
-                            <div class="terminal-actions">
-                                <div class="terminal-filters" id="results-terminal-filter-group">
-                                    <button type="button" class="terminal-filter-btn active" data-filter="all">ALL</button>
-                                    <button type="button" class="terminal-filter-btn" data-filter="CRAWL">CRAWL</button>
-                                    <button type="button" class="terminal-filter-btn" data-filter="SEC">SECURITY</button>
-                                    <button type="button" class="terminal-filter-btn" data-filter="AI">AI</button>
-                                    <button type="button" class="terminal-filter-btn" data-filter="QA">QA</button>
-                                    <button type="button" class="terminal-filter-btn" data-filter="LOGIC">LOGIC</button>
-                                    <button type="button" class="terminal-filter-btn" data-filter="API">API</button>
-                                </div>
-                                <button type="button" id="results-terminal-copy-btn" class="terminal-btn" title="Copy Logs">📋 Copy</button>
-                                <button type="button" id="results-terminal-close-btn" class="terminal-btn" title="Close Logs">✕ Close</button>
-                            </div>
-                        </div>
-                        <div class="terminal-body" id="results-terminal-output">
-                            <div class="terminal-line system"><span class="t-stamp">[00:00:00]</span> <span class="t-agent">[VIBE-SHIELD]</span> <span class="t-msg">Historical scan execution stream ready.</span></div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Historical Security Score Trend Chart Card -->
-            <section class="card trend-card" id="trend-section">
-                <div class="card-header trend-header">
-                    <div>
-                        <h2>📈 Continuous Security Posture Trend</h2>
-                        <p class="subtitle" id="trend-subtitle">Historical score velocity & vulnerability remediation trajectory over time</p>
-                    </div>
-                    <div class="trend-controls">
-                        <!-- KPI Metric Badges -->
-                        <div class="trend-kpis">
-                            <div class="trend-kpi-pill">
-                                <span class="kpi-label">SCORE VELOCITY</span>
-                                <span class="kpi-val" id="kpi-velocity">+14% ↗</span>
-                            </div>
-                            <div class="trend-kpi-pill">
-                                <span class="kpi-label">REMEDIATION STATUS</span>
-                                <span class="kpi-val" id="kpi-status" style="color: var(--accent-green);">Hardening 🟢</span>
-                            </div>
-                        </div>
-                        <div class="terminal-filters" id="trend-metric-toggles">
-                            <button type="button" class="terminal-filter-btn active" data-metric="overall">Overall Score</button>
-                            <button type="button" class="terminal-filter-btn" data-metric="headers">🛡️ Perimeter</button>
-                            <button type="button" class="terminal-filter-btn" data-metric="ai">🤖 AI Safety</button>
-                            <button type="button" class="terminal-filter-btn" data-metric="api">🔑 API Auth</button>
-                            <button type="button" class="terminal-filter-btn" data-metric="logic">⚖️ Logic</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Trend Chart Canvas Wrapper -->
-                <div class="trend-chart-wrapper" id="trend-chart-wrapper">
-                    <canvas id="trend-chart-canvas"></canvas>
-                    <div id="trend-chart-tooltip" class="trend-tooltip hidden">
-                        <div class="trend-tooltip-head">
-                            <span id="tt-date" class="tt-date">2026-09-17 03:51</span>
-                            <span id="tt-grade" class="badge">GRADE A</span>
-                        </div>
-                        <div class="trend-tooltip-score">
-                            <span id="tt-score-val" class="tt-score">94</span><span class="tt-max">/100</span>
-                        </div>
-                        <div class="trend-tooltip-details" id="tt-details">
-                            <div>Target: <span id="tt-target" style="color: var(--accent-cyan);">jubidate-ai.vercel.app</span></div>
-                            <div>Findings: <span id="tt-findings">42 total</span></div>
-                            <div>Duration: <span id="tt-duration">79.2s</span></div>
-                        </div>
-                        <button type="button" id="tt-inspect-btn" class="btn btn-secondary" style="width: 100%; margin-top: 8px; font-size: 10px; padding: 4px 8px;">
-                            Inspect This Scan ↗
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Trend Legend / Summary Bar -->
-                <div class="trend-bottom-bar">
-                    <div class="trend-metric-legend">
-                        <span class="t-legend-item"><span class="t-dot" style="background: var(--accent-green);"></span> <span>Overall Security Posture (0-100)</span></span>
-                        <span class="t-legend-item"><span class="t-dot" style="background: var(--accent-cyan);"></span> <span>Perimeter & Headers</span></span>
-                        <span class="t-legend-item"><span class="t-dot" style="background: var(--accent-purple);"></span> <span>AI & Prompt Defense</span></span>
-                        <span class="t-legend-item"><span class="t-dot" style="background: var(--accent-amber);"></span> <span>API & Auth Hardening</span></span>
-                    </div>
-                    <div id="trend-timeline-summary" class="trend-summary-text">
-                        Showing posture evolution across latest scans
-                    </div>
-                </div>
-            </section>
-
-            <!-- OWASP Top 10 for LLMs AI Threat Matrix Section -->
-            <section id="ai-matrix-section" class="card ai-matrix-card">
-                <div class="card-header ai-matrix-header">
-                    <div>
-                        <div class="section-badge-wrap" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                            <span class="badge badge-ai-matrix">⚔️ ADVERSARIAL AI INTELLIGENCE</span>
-                            <span class="badge badge-secondary" id="ai-matrix-status-pill">10 VECTORS ARMED</span>
-                        </div>
-                        <h2>OWASP Top 10 for LLMs — Threat & Exploitation Matrix</h2>
-                        <p class="subtitle">Autonomous evaluation of Prompt Injection, System Prompt Leakage, Context Bombing & Multi-Turn Adversarial Jailbreaks</p>
-                    </div>
-                    <div class="ai-matrix-controls">
-                        <button type="button" id="run-matrix-sim-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #ff007f 0%, #7000ff 100%); border: none; font-size: 11px; padding: 7px 14px; font-weight: 700;">
-                            ⚡ Run Multi-Vector Threat Simulation
-                        </button>
-                    </div>
-                </div>
-
-                <!-- AI Threat Matrix Grid (10 interactive vector cards) -->
-                <div id="ai-matrix-grid" class="ai-matrix-grid">
-                    <div class="matrix-loading">Loading OWASP LLM Threat Taxonomy...</div>
-                </div>
-            </section>
-
-            <!-- Scan History Section -->
-            <section class="card history-card">
-                <div class="card-header">
-                    <h2>Recent Scans</h2>
-                    <p class="subtitle">History of scans performed across web applications</p>
-                </div>
-                <div id="history-list" class="history-list">
-                    <div class="empty-history">Loading scan history...</div>
-                </div>
-            </section>
-        </main>
-
-        <footer class="footer">
-            <p>VIBE SHIELD v1.0.0 — Autonomous Security & Quality Intelligence Agent created by <strong>Aarav Khanal</strong></p>
-        </footer>
+      <div class="server-status">
+        <span class="status-dot" id="server-status-dot"></span>
+        <span id="server-status-text">Ready</span>
+      </div>
     </div>
+  </header>
 
-    <!-- AI One-Click Auto-Patch Remediation Modal -->
-    <div id="patch-modal" class="modal-backdrop hidden">
-        <div class="modal-card">
-            <div class="modal-header">
-                <div class="modal-title-wrap">
-                    <span class="badge badge-patch">⚡ AI AUTO-PATCH REMEDIATION</span>
-                    <h3 id="patch-finding-title">Fixing Vulnerability</h3>
-                </div>
-                <button type="button" id="close-patch-modal-btn" class="close-btn">×</button>
-            </div>
+  <!-- ═══ MAIN ════════════════════════════════════════════════ -->
+  <main class="site-main">
 
-            <div class="modal-body">
-                <div class="patch-rec-box">
-                    <label>ROOT CAUSE & DEFENSIVE STRATEGY</label>
-                    <p id="patch-recommendation-text">Applying defense-in-depth sanitization and header hardening...</p>
-                </div>
+    <!-- HERO SEARCH -->
+    <section class="hero-section" id="hero-section">
+      <h1 class="hero-title">Security audit any website</h1>
+      <p class="hero-sub">Enter a URL and VIBE SHIELD navigates to it in the background, runs a full expert-grade security check, and gives you every finding with fix instructions.</p>
 
-                <div class="framework-tabs-wrap">
-                    <label>SELECT TARGET FRAMEWORK / RUNTIME:</label>
-                    <div id="framework-tabs" class="framework-tabs">
-                        <!-- Dynamically populated -->
-                    </div>
-                </div>
-
-                <div class="code-editor-box">
-                    <div class="editor-top-bar">
-                        <span id="patch-target-file" class="file-path">📁 middleware.ts</span>
-                        <button type="button" id="copy-patch-btn" class="btn btn-secondary copy-btn">
-                            <span class="copy-icon">📋</span> <span id="copy-btn-text">Copy Patch</span>
-                        </button>
-                    </div>
-                    <pre><code id="patch-code-content" class="code-content">// Generating patch...</code></pre>
-                </div>
-            </div>
+      <form id="scan-form" class="search-bar-wrap" autocomplete="off">
+        <div class="search-bar">
+          <span class="search-bar-icon">⌕</span>
+          <input type="text" id="target-url" placeholder="https://example.com or paste any URL..." required>
+          <button type="submit" id="start-scan-btn" class="search-scan-btn">Scan →</button>
         </div>
-    </div>
 
-    <!-- CVSS v3.1 Quantitative Score Calculator Modal -->
-    <div id="cvss-modal" class="modal-backdrop hidden">
-        <div class="modal-card cvss-modal-card">
-            <div class="modal-header">
-                <div class="modal-title-wrap">
-                    <span class="badge badge-cvss-tag">🎯 CVSS v3.1 QUANTITATIVE SCORING ENGINE</span>
-                    <h3 id="cvss-finding-title">CVSS v3.1 Base Score Calculator</h3>
-                </div>
-                <button type="button" id="close-cvss-modal-btn" class="close-btn">×</button>
+        <button type="button" id="scan-config-toggle-btn" class="scan-config-toggle">
+          Configure scan options <span class="config-chevron" id="config-chevron">▾</span>
+        </button>
+
+        <div class="scan-config-panel" id="scan-config-panel">
+          <div class="config-row">
+            <div class="config-field">
+              <label>Scan Modules</label>
+              <div class="module-checks" id="module-checks">
+                <label class="module-check checked"><input type="checkbox" name="modules" value="qa" checked><span>QA & Functional</span></label>
+                <label class="module-check checked"><input type="checkbox" name="modules" value="security" checked><span>Security</span></label>
+                <label class="module-check checked"><input type="checkbox" name="modules" value="ai" checked><span>AI & Prompts</span></label>
+                <label class="module-check checked"><input type="checkbox" name="modules" value="logic" checked><span>Business Logic</span></label>
+                <label class="module-check checked"><input type="checkbox" name="modules" value="api" checked><span>API & Auth</span></label>
+              </div>
             </div>
-
-            <div class="modal-body cvss-modal-body">
-                <!-- Score Output Overview -->
-                <div class="cvss-score-banner">
-                    <div class="cvss-score-gauge-wrap">
-                        <div class="cvss-score-ring" id="cvss-score-ring">
-                            <span id="cvss-score-num" class="cvss-score-num">9.8</span>
-                            <span class="cvss-score-max">/10.0</span>
-                        </div>
-                        <div class="cvss-score-meta">
-                            <span id="cvss-severity-badge" class="badge badge-critical">CRITICAL</span>
-                            <div class="cvss-qualitative-label" id="cvss-qualitative-desc">Vulnerability is remotely exploitable with catastrophic impact</div>
-                        </div>
-                    </div>
-
-                    <div class="cvss-subscores-grid">
-                        <div class="cvss-subscore-card">
-                            <div class="subscore-head">
-                                <span>Exploitability Subscore</span>
-                                <strong id="cvss-exploit-score">3.9 / 3.9</strong>
-                            </div>
-                            <div class="subscore-bar-bg">
-                                <div id="cvss-exploit-bar" class="subscore-bar-fill" style="width: 100%;"></div>
-                            </div>
-                            <span class="subscore-hint">Ease and prerequisites of exploitation</span>
-                        </div>
-
-                        <div class="cvss-subscore-card">
-                            <div class="subscore-head">
-                                <span>Impact Subscore</span>
-                                <strong id="cvss-impact-score">5.9 / 6.0</strong>
-                            </div>
-                            <div class="subscore-bar-bg">
-                                <div id="cvss-impact-bar" class="subscore-bar-fill" style="width: 98%;"></div>
-                            </div>
-                            <span class="subscore-hint">Direct damage to Confidentiality, Integrity, Availability</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Vector String Box -->
-                <div class="cvss-vector-container">
-                    <div class="cvss-vector-header">
-                        <label>OFFICIAL CVSS v3.1 VECTOR SPECIFICATION</label>
-                        <div class="cvss-vector-actions">
-                            <button type="button" id="cvss-copy-vector-btn" class="btn btn-secondary btn-mini">
-                                📋 <span id="cvss-copy-vector-text">Copy Vector</span>
-                            </button>
-                            <button type="button" id="cvss-copy-json-btn" class="btn btn-secondary btn-mini">
-                                📦 Copy JSON
-                            </button>
-                        </div>
-                    </div>
-                    <div class="cvss-vector-display">
-                        <code id="cvss-vector-string">CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</code>
-                    </div>
-                </div>
-
-                <!-- Threat Modeling Preset Buttons -->
-                <div class="cvss-presets-bar">
-                    <label>THREAT MODELING PRESETS:</label>
-                    <div class="cvss-preset-buttons">
-                        <button type="button" class="btn-cvss-preset" data-preset="prompt-injection">🤖 Prompt Injection</button>
-                        <button type="button" class="btn-cvss-preset" data-preset="sqli">💉 SQL Injection</button>
-                        <button type="button" class="btn-cvss-preset" data-preset="ssrf">🌐 SSRF / Cloud Leak</button>
-                        <button type="button" class="btn-cvss-preset" data-preset="secrets">🔑 Hardcoded Secret</button>
-                        <button type="button" class="btn-cvss-preset" data-preset="cors">🔓 Wildcard CORS</button>
-                        <button type="button" class="btn-cvss-preset" data-preset="headers">🛡️ Missing CSP / HSTS</button>
-                        <button type="button" class="btn-cvss-preset" data-preset="cookie">🍪 Insecure Cookie</button>
-                    </div>
-                </div>
-
-                <!-- Interactive CVSS Metric Selector Matrix -->
-                <div class="cvss-matrix-grid">
-                    <!-- Column 1: Exploitability Metrics -->
-                    <div class="cvss-matrix-col">
-                        <div class="matrix-col-title">
-                            <span class="matrix-icon">⚡</span>
-                            <span>Exploitability Metrics</span>
-                        </div>
-
-                        <!-- AV: Attack Vector -->
-                        <div class="cvss-metric-group" data-metric="AV">
-                            <div class="metric-label-row">
-                                <span class="metric-name">Attack Vector (AV)</span>
-                                <span class="metric-selected-desc" id="desc-AV">Remotely exploitable</span>
-                            </div>
-                            <div class="metric-btn-group">
-                                <button type="button" class="btn-metric" data-val="N">Network (N)</button>
-                                <button type="button" class="btn-metric" data-val="A">Adjacent (A)</button>
-                                <button type="button" class="btn-metric" data-val="L">Local (L)</button>
-                                <button type="button" class="btn-metric" data-val="P">Physical (P)</button>
-                            </div>
-                        </div>
-
-                        <!-- AC: Attack Complexity -->
-                        <div class="cvss-metric-group" data-metric="AC">
-                            <div class="metric-label-row">
-                                <span class="metric-name">Attack Complexity (AC)</span>
-                                <span class="metric-selected-desc" id="desc-AC">No specialized conditions</span>
-                            </div>
-                            <div class="metric-btn-group">
-                                <button type="button" class="btn-metric" data-val="L">Low (L)</button>
-                                <button type="button" class="btn-metric" data-val="H">High (H)</button>
-                            </div>
-                        </div>
-
-                        <!-- PR: Privileges Required -->
-                        <div class="cvss-metric-group" data-metric="PR">
-                            <div class="metric-label-row">
-                                <span class="metric-name">Privileges Required (PR)</span>
-                                <span class="metric-selected-desc" id="desc-PR">Unauthenticated attacker</span>
-                            </div>
-                            <div class="metric-btn-group">
-                                <button type="button" class="btn-metric" data-val="N">None (N)</button>
-                                <button type="button" class="btn-metric" data-val="L">Low (L)</button>
-                                <button type="button" class="btn-metric" data-val="H">High (H)</button>
-                            </div>
-                        </div>
-
-                        <!-- UI: User Interaction -->
-                        <div class="cvss-metric-group" data-metric="UI">
-                            <div class="metric-label-row">
-                                <span class="metric-name">User Interaction (UI)</span>
-                                <span class="metric-selected-desc" id="desc-UI">Zero interaction required</span>
-                            </div>
-                            <div class="metric-btn-group">
-                                <button type="button" class="btn-metric" data-val="N">None (N)</button>
-                                <button type="button" class="btn-metric" data-val="R">Required (R)</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Column 2: Scope & Impact Metrics -->
-                    <div class="cvss-matrix-col">
-                        <div class="matrix-col-title">
-                            <span class="matrix-icon">💥</span>
-                            <span>Scope & Impact Metrics</span>
-                        </div>
-
-                        <!-- S: Scope -->
-                        <div class="cvss-metric-group" data-metric="S">
-                            <div class="metric-label-row">
-                                <span class="metric-name">Scope Boundary (S)</span>
-                                <span class="metric-selected-desc" id="desc-S">Impacts component only</span>
-                            </div>
-                            <div class="metric-btn-group">
-                                <button type="button" class="btn-metric" data-val="U">Unchanged (U)</button>
-                                <button type="button" class="btn-metric" data-val="C">Changed (C)</button>
-                            </div>
-                        </div>
-
-                        <!-- C: Confidentiality -->
-                        <div class="cvss-metric-group" data-metric="C">
-                            <div class="metric-label-row">
-                                <span class="metric-name">Confidentiality Impact (C)</span>
-                                <span class="metric-selected-desc" id="desc-C">Total data disclosure</span>
-                            </div>
-                            <div class="metric-btn-group">
-                                <button type="button" class="btn-metric" data-val="N">None (N)</button>
-                                <button type="button" class="btn-metric" data-val="L">Low (L)</button>
-                                <button type="button" class="btn-metric" data-val="H">High (H)</button>
-                            </div>
-                        </div>
-
-                        <!-- I: Integrity -->
-                        <div class="cvss-metric-group" data-metric="I">
-                            <div class="metric-label-row">
-                                <span class="metric-name">Integrity Impact (I)</span>
-                                <span class="metric-selected-desc" id="desc-I">Total modification of state</span>
-                            </div>
-                            <div class="metric-btn-group">
-                                <button type="button" class="btn-metric" data-val="N">None (N)</button>
-                                <button type="button" class="btn-metric" data-val="L">Low (L)</button>
-                                <button type="button" class="btn-metric" data-val="H">High (H)</button>
-                            </div>
-                        </div>
-
-                        <!-- A: Availability -->
-                        <div class="cvss-metric-group" data-metric="A">
-                            <div class="metric-label-row">
-                                <span class="metric-name">Availability Impact (A)</span>
-                                <span class="metric-selected-desc" id="desc-A">Total denial of service</span>
-                            </div>
-                            <div class="metric-btn-group">
-                                <button type="button" class="btn-metric" data-val="N">None (N)</button>
-                                <button type="button" class="btn-metric" data-val="L">Low (L)</button>
-                                <button type="button" class="btn-metric" data-val="H">High (H)</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+          </div>
+          <div class="config-row">
+            <div class="config-field">
+              <label>Safety Tier</label>
+              <select id="safety-mode" class="config-select">
+                <option value="safe-active" selected>Safe-Active (non-destructive probing)</option>
+                <option value="passive">Passive (recon & static only)</option>
+                <option value="aggressive">Aggressive (full state-mutation)</option>
+              </select>
             </div>
+            <div class="config-field">
+              <label>Crawl Depth</label>
+              <select id="max-pages" class="config-select">
+                <option value="10">Quick — up to 10 pages</option>
+                <option value="25" selected>Standard — up to 25 pages</option>
+                <option value="50">Deep — up to 50 pages</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Auth -->
+          <button type="button" id="auth-expand-btn" class="auth-expand-btn">
+            <span id="auth-expand-label">Authentication (optional — for scanning behind login walls)</span>
+            <span id="auth-expand-arrow">▾</span>
+          </button>
+          <div id="auth-expand-body" class="auth-expand-body">
+            <div class="auth-tabs">
+              <button type="button" class="auth-tab active" data-auth="none">No Auth</button>
+              <button type="button" class="auth-tab" data-auth="form">Form Login</button>
+              <button type="button" class="auth-tab" data-auth="token">Bearer Token</button>
+              <button type="button" class="auth-tab" data-auth="cookie">Session Cookie</button>
+            </div>
+            <div class="auth-fields active" id="auth-panel-none">
+              <p class="auth-hint">Public mode — no authentication. VIBE SHIELD will scan all publicly accessible surfaces.</p>
+            </div>
+            <div class="auth-fields" id="auth-panel-form">
+              <div class="auth-field"><label>Login URL</label><input type="text" id="auth-login-url" placeholder="https://your-app.com/login"></div>
+              <div class="auth-field"><label>Username / Email</label><input type="text" id="auth-username" placeholder="test@example.com" autocomplete="off"></div>
+              <div class="auth-field"><label>Password</label><input type="password" id="auth-password" placeholder="••••••••" autocomplete="off"></div>
+              <div class="auth-field"><label>Role Label</label><input type="text" id="auth-role-name" value="admin"></div>
+            </div>
+            <div class="auth-fields" id="auth-panel-token">
+              <div class="auth-field" style="flex:2"><label>Bearer / JWT Token</label><input type="text" id="auth-bearer-token" placeholder="eyJhbGci..."></div>
+              <div class="auth-field"><label>Role Label</label><input type="text" id="auth-token-role" value="authenticated-user"></div>
+            </div>
+            <div class="auth-fields" id="auth-panel-cookie">
+              <div class="auth-field" style="flex:2"><label>Cookie String</label><input type="text" id="auth-cookies" placeholder="session=abc123; connect.sid=xyz"></div>
+              <div class="auth-field"><label>Role Label</label><input type="text" id="auth-cookie-role" value="session-user"></div>
+            </div>
+          </div>
         </div>
-    </div>
+      </form>
+    </section>
 
-    <!-- Production Hardening & WAF Exporter Modal -->
-    <div id="waf-modal" class="modal-backdrop hidden">
-        <div class="modal-card waf-modal-card">
-            <div class="modal-header">
-                <div class="modal-title-wrap">
-                    <span class="badge badge-waf-tag">🛡️ ONE-CLICK PRODUCTION HARDENING & WAF EXPORTER</span>
-                    <h3 id="waf-modal-title">Production Hardening & WAF Bundle</h3>
-                </div>
-                <button type="button" id="close-waf-modal-btn" class="close-btn">×</button>
-            </div>
-
-            <div class="modal-body waf-modal-body">
-                <!-- Overview Banner -->
-                <div class="waf-meta-banner">
-                    <div class="waf-meta-info">
-                        <div class="waf-domain-badge">
-                            <span class="waf-icon">🌐</span>
-                            <span id="waf-target-domain">target-app.com</span>
-                        </div>
-                        <span class="waf-badge" id="waf-findings-count">42 Security Findings Mitigated</span>
-                        <span class="waf-badge-green">✔ Ready for Production Deployment</span>
-                    </div>
-                    <div class="waf-banner-actions">
-                        <button type="button" id="waf-download-all-btn" class="btn btn-primary" style="font-size: 11px; padding: 6px 14px; background: linear-gradient(135deg, #7000ff 0%, #00f0ff 100%); border: none;">
-                            📦 Download Full Bundle
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Format Selection Tabs -->
-                <div class="waf-tabs-bar">
-                    <button type="button" class="waf-tab-btn active" data-tab="nginx">
-                        <span class="tab-icon">🌐</span> Nginx WAF Config
-                    </button>
-                    <button type="button" class="waf-tab-btn" data-tab="cloudflare">
-                        <span class="tab-icon">🔒</span> Cloudflare WAF Rules
-                    </button>
-                    <button type="button" class="waf-tab-btn" data-tab="caddy">
-                        <span class="tab-icon">⚡</span> Caddyfile Rules
-                    </button>
-                    <button type="button" class="waf-tab-btn" data-tab="gitPatch">
-                        <span class="tab-icon">🐙</span> GitHub PR Patch (.patch)
-                    </button>
-                    <button type="button" class="waf-tab-btn" data-tab="env">
-                        <span class="tab-icon">🔑</span> Hardened .env Template
-                    </button>
-                    <button type="button" class="waf-tab-btn" data-tab="docker">
-                        <span class="tab-icon">🐳</span> Dockerfile Hardening
-                    </button>
-                </div>
-
-                <!-- Code Editor / Preview Box -->
-                <div class="code-editor-box waf-code-box">
-                    <div class="editor-top-bar">
-                        <div class="waf-editor-info">
-                            <span id="waf-file-path" class="file-path">📁 /etc/nginx/conf.d/vibe-shield-security.conf</span>
-                            <span id="waf-file-desc" class="waf-file-desc">Production reverse proxy rate-limiting & WAF security rules</span>
-                        </div>
-                        <div class="waf-editor-actions">
-                            <button type="button" id="waf-copy-code-btn" class="btn btn-secondary copy-btn">
-                                <span class="copy-icon">📋</span> <span id="waf-copy-btn-text">Copy Configuration</span>
-                            </button>
-                            <button type="button" id="waf-download-file-btn" class="btn btn-secondary copy-btn">
-                                <span>💾</span> <span>Download File</span>
-                            </button>
-                        </div>
-                    </div>
-                    <pre><code id="waf-code-content" class="code-content">// Generating hardening rules...</code></pre>
-                </div>
-
-                <!-- Deployment Quick Guide Box -->
-                <div class="waf-deploy-box">
-                    <div class="deploy-box-head">
-                        <span class="deploy-icon">⚡</span>
-                        <span>QUICK DEPLOYMENT COMMAND</span>
-                    </div>
-                    <code id="waf-deploy-command" class="waf-deploy-cli">sudo cp vibe-shield-security.conf /etc/nginx/conf.d/ && sudo nginx -t && sudo systemctl reload nginx</code>
-                </div>
-            </div>
+    <!-- PROGRESS SECTION -->
+    <section id="scan-progress-section" class="progress-section hidden">
+      <div class="progress-header">
+        <div class="progress-title">
+          <span class="mini-spinner" id="progress-spinner"></span>
+          <span>Scanning</span>
+          <span class="scan-target-badge" id="current-target-display">—</span>
         </div>
-    </div>
+        <span class="scan-timer" id="scan-timer">00:00</span>
+      </div>
 
-    <!-- AI Threat Simulation & Multi-Turn Sandbox Modal -->
-    <div id="ai-simulation-modal" class="modal-backdrop hidden">
-        <div class="modal-card ai-sim-modal-card">
-            <div class="modal-header">
-                <div class="modal-title-wrap">
-                    <span class="badge badge-ai-sim-tag">⚔️ ADVERSARIAL AI MULTI-TURN THREAT SIMULATOR</span>
-                    <h3 id="sim-modal-title">LLM01: Prompt Injection (Direct & Indirect)</h3>
-                </div>
-                <button type="button" id="close-ai-sim-modal-btn" class="close-btn">×</button>
-            </div>
-
-            <div class="modal-body ai-sim-modal-body">
-                <!-- Threat Profile Overview -->
-                <div class="sim-threat-banner">
-                    <div class="sim-threat-meta">
-                        <span id="sim-threat-id" class="badge badge-vector-code">LLM01</span>
-                        <span id="sim-threat-sev" class="badge badge-critical">CRITICAL (CVSS 9.3)</span>
-                        <span id="sim-threat-status" class="badge badge-status-defended">🛡️ GUARDRAIL ACTIVE</span>
-                    </div>
-                    <p id="sim-threat-desc" class="sim-threat-desc">
-                        Adversary manipulates LLM behavior through crafted user inputs or untrusted third-party content.
-                    </p>
-                </div>
-
-                <!-- Multi-Turn Dialogue Sandbox -->
-                <div class="sim-dialogue-container">
-                    <div class="sim-dialogue-head">
-                        <div class="dialogue-head-left">
-                            <span class="sim-dot-live"></span>
-                            <span class="sim-dialogue-title">LIVE MULTI-TURN ADVERSARIAL PROBE STREAM</span>
-                        </div>
-                        <span id="sim-category-label" class="sim-cat-tag">Multi-Turn System Instruction Hijack</span>
-                    </div>
-                    <div id="sim-dialogue-stream" class="sim-dialogue-stream">
-                        <!-- Populated dynamically turn by turn -->
-                    </div>
-                </div>
-
-                <!-- Live Guardrail Telemetry Bar -->
-                <div class="sim-telemetry-grid">
-                    <div class="sim-telemetry-card">
-                        <span class="telemetry-label">DEFENSE VERDICT</span>
-                        <strong id="sim-telemetry-verdict" class="telemetry-val text-green">INTERCEPTED & NEUTRALIZED</strong>
-                    </div>
-                    <div class="sim-telemetry-card">
-                        <span class="telemetry-label">INFERENCE LATENCY</span>
-                        <strong id="sim-telemetry-latency" class="telemetry-val">168ms</strong>
-                    </div>
-                    <div class="sim-telemetry-card">
-                        <span class="telemetry-label">TOKENS CONSUMED</span>
-                        <strong id="sim-telemetry-tokens" class="telemetry-val">112 tokens</strong>
-                    </div>
-                    <div class="sim-telemetry-card">
-                        <span class="telemetry-label">PRIMARY GUARDRAIL RULE</span>
-                        <strong id="sim-telemetry-rule" class="telemetry-val" style="font-size: 11px;">Strict XML System Prompt Boundary Tagging</strong>
-                    </div>
-                </div>
-
-                <!-- Production Defense Guardrail Code Box -->
-                <div class="code-editor-box sim-code-box">
-                    <div class="editor-top-bar">
-                        <div class="waf-editor-info">
-                            <span class="file-path">📁 guardrails/ai-defense-policy.ts</span>
-                            <span class="waf-file-desc">Production NeMo / Llama-Guard defense filter definition</span>
-                        </div>
-                        <button type="button" id="sim-copy-code-btn" class="btn btn-secondary copy-btn">
-                            <span class="copy-icon">📋</span> <span id="sim-copy-btn-text">Copy Guardrail Code</span>
-                        </button>
-                    </div>
-                    <pre><code id="sim-code-content" class="code-content">// Generating guardrail policy...</code></pre>
-                </div>
-
-                <!-- Simulation Footer Controls -->
-                <div class="sim-footer-controls">
-                    <button type="button" id="sim-rerun-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #ff007f 0%, #7000ff 100%); border: none;">
-                        ▶️ Re-Run Adversarial Probe
-                    </button>
-                    <button type="button" id="sim-next-btn" class="btn btn-secondary">
-                        Next Threat Vector (LLM02) ↗
-                    </button>
-                </div>
-            </div>
+      <div class="agents-grid">
+        <div class="agent-card" id="agent-crawl">
+          <div class="agent-card-top">
+            <span class="agent-name">Crawl Agent</span>
+            <span class="agent-status-pill" id="agent-crawl-status">Waiting</span>
+          </div>
+          <div class="agent-log-text" id="agent-crawl-log">Awaiting dispatch...</div>
         </div>
-    </div>
-
-    <!-- CI/CD Continuous Scan & Webhook Hub Modal -->
-    <div id="webhook-modal" class="modal-backdrop hidden">
-        <div class="modal-card webhook-modal-card">
-            <div class="modal-header">
-                <div class="modal-title-wrap">
-                    <span class="badge badge-webhook-tag">⚡ CONTINUOUS SECURITY AUTOMATION</span>
-                    <h3 id="webhook-modal-title">CI/CD Pipeline Security Gate & Webhook Integration</h3>
-                </div>
-                <button type="button" id="close-webhook-modal-btn" class="close-btn">×</button>
-            </div>
-
-            <div class="modal-body webhook-modal-body">
-                <!-- Banner Meta Info -->
-                <div class="webhook-banner">
-                    <div class="webhook-banner-left">
-                        <span class="webhook-endpoint-label">ACTIVE WEBHOOK ENDPOINT:</span>
-                        <code id="webhook-endpoint-url" class="webhook-url-code">POST http://localhost:3000/api/webhook/scan</code>
-                    </div>
-                    <div class="webhook-banner-right">
-                        <button type="button" id="btn-test-webhook-trigger" class="btn btn-primary" style="font-size: 11px; padding: 6px 14px; background: linear-gradient(135deg, #00ff88 0%, #00f0ff 100%); color: #05050d; font-weight: 700; border: none;">
-                            🚀 Test Webhook Trigger
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Gate Threshold Configurator -->
-                <div class="webhook-gate-config">
-                    <h4 class="gate-config-title">🛡️ Pull Request Security Gate Thresholds</h4>
-                    <div class="gate-grid">
-                        <div class="gate-item">
-                            <label for="gate-min-score">Minimum Security Score (0-100)</label>
-                            <input type="number" id="gate-min-score" min="0" max="100" value="80" class="select-input" />
-                            <span class="gate-hint">PR fails if overall score drops below this.</span>
-                        </div>
-                        <div class="gate-item">
-                            <label for="gate-max-critical">Max Allowed Critical Vulnerabilities</label>
-                            <input type="number" id="gate-max-critical" min="0" max="10" value="0" class="select-input" />
-                            <span class="gate-hint">PR fails if critical findings exceed this count.</span>
-                        </div>
-                        <div class="gate-item">
-                            <label for="gate-max-high">Max Allowed High Vulnerabilities</label>
-                            <input type="number" id="gate-max-high" min="0" max="20" value="2" class="select-input" />
-                            <span class="gate-hint">PR fails if high findings exceed this count.</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Integration Platform Tabs -->
-                <div class="waf-tabs-bar webhook-tabs-bar">
-                    <button type="button" class="webhook-tab-btn active" data-tab="github">
-                        <span class="tab-icon">🐙</span> GitHub Actions (.github/workflows)
-                    </button>
-                    <button type="button" class="webhook-tab-btn" data-tab="curl">
-                        <span class="tab-icon">⚡</span> cURL / Webhook Payload
-                    </button>
-                    <button type="button" class="webhook-tab-btn" data-tab="gitlab">
-                        <span class="tab-icon">🦊</span> GitLab CI (.gitlab-ci.yml)
-                    </button>
-                    <button type="button" class="webhook-tab-btn" data-tab="nodejs">
-                        <span class="tab-icon">📦</span> Node.js CI Script
-                    </button>
-                </div>
-
-                <!-- Code Editor / Preview Box -->
-                <div class="code-editor-box webhook-code-box">
-                    <div class="editor-top-bar">
-                        <div class="waf-editor-info">
-                            <span id="webhook-file-path" class="file-path">📁 .github/workflows/vibe-shield-security-gate.yml</span>
-                            <span id="webhook-file-desc" class="waf-file-desc">Continuous audit on PR and commit with security gate enforcement</span>
-                        </div>
-                        <div class="waf-editor-actions">
-                            <button type="button" id="webhook-copy-code-btn" class="btn btn-secondary copy-btn">
-                                <span class="copy-icon">📋</span> <span id="webhook-copy-btn-text">Copy Workflow YAML</span>
-                            </button>
-                        </div>
-                    </div>
-                    <pre><code id="webhook-code-content" class="code-content">// Generating CI/CD workflow...</code></pre>
-                </div>
-
-                <div id="webhook-test-result" class="webhook-test-result-box hidden">
-                    <!-- Webhook execution feedback -->
-                </div>
-            </div>
+        <div class="agent-card" id="agent-qa">
+          <div class="agent-card-top">
+            <span class="agent-name">QA Agent</span>
+            <span class="agent-status-pill" id="agent-qa-status">Waiting</span>
+          </div>
+          <div class="agent-log-text" id="agent-qa-log">Awaiting surface inventory...</div>
         </div>
-    </div>
-
-    <!-- Executive Security Audit Dossier (PDF Printable) Modal -->
-    <div id="executive-report-modal" class="modal-backdrop hidden">
-        <div class="modal-card exec-modal-card">
-            <div class="modal-header exec-modal-header no-print">
-                <div class="modal-title-wrap">
-                    <span class="badge badge-exec-tag">📄 EXECUTIVE AUDIT REPORT</span>
-                    <h3 id="exec-modal-title">Executive Security & Quality Dossier</h3>
-                </div>
-                <div class="exec-header-actions">
-                    <button type="button" id="exec-print-pdf-btn" class="btn btn-primary" style="background: linear-gradient(135deg, #ffd700 0%, #ff8800 100%); color: #000; font-weight: 700; border: none;">
-                        🖨️ Print / Save as PDF
-                    </button>
-                    <button type="button" id="exec-copy-md-btn" class="btn btn-secondary">
-                        📋 Copy Markdown Briefing
-                    </button>
-                    <button type="button" id="close-exec-modal-btn" class="close-btn">×</button>
-                </div>
-            </div>
-
-            <div class="modal-body exec-modal-body" id="printable-exec-content">
-                <!-- Cover / Header Briefing Banner -->
-                <div class="exec-report-banner">
-                    <div class="exec-banner-top">
-                        <div class="exec-brand">
-                            <span class="exec-brand-icon">🛡️</span>
-                            <div>
-                                <h2>VIBE SHIELD SECURITY INTELLIGENCE</h2>
-                                <span class="exec-subhead">Autonomous Multi-Agent Application Security & Quality Audit Dossier</span>
-                            </div>
-                        </div>
-                        <div class="exec-badge-wrap">
-                            <span class="badge badge-confidential">CONFIDENTIAL // STAKEHOLDER DISTRIBUTION</span>
-                        </div>
-                    </div>
-
-                    <div class="exec-meta-grid">
-                        <div class="exec-meta-cell">
-                            <span class="meta-label">TARGET APPLICATION</span>
-                            <strong id="exec-meta-url" class="meta-val">https://app.com</strong>
-                        </div>
-                        <div class="exec-meta-cell">
-                            <span class="meta-label">AUDIT DATE & TIME</span>
-                            <strong id="exec-meta-date" class="meta-val">2026-09-19 12:00 UTC</strong>
-                        </div>
-                        <div class="exec-meta-cell">
-                            <span class="meta-label">ANALYSIS DURATION</span>
-                            <strong id="exec-meta-duration" class="meta-val">14.2s</strong>
-                        </div>
-                        <div class="exec-meta-cell">
-                            <span class="meta-label">SCANNER VERSION</span>
-                            <strong class="meta-val">v1.0.0 (6 Multi-Agents)</strong>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Executive Posture & Score Overview -->
-                <div class="exec-score-section">
-                    <div class="exec-score-card">
-                        <div class="exec-score-circle" id="exec-score-circle">
-                            <span id="exec-grade-val" class="exec-grade">A</span>
-                            <span id="exec-score-val" class="exec-score-num">92/100</span>
-                        </div>
-                        <div class="exec-score-meta">
-                            <div class="exec-status-pill" id="exec-status-pill">PROTECTED & HARDENED</div>
-                            <h4>OVERALL SECURITY POSTURE GRADE</h4>
-                            <p id="exec-risk-statement" class="exec-risk-stmt">
-                                Zero critical vulnerabilities detected. Target application exhibits hardened perimeter defenses and verified AI guardrails.
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Executive Sub-Category Breakdown -->
-                    <div class="exec-subscores-grid">
-                        <div class="exec-subscore-card">
-                            <div class="subscore-head">
-                                <span>🛡️ Perimeter & Headers</span>
-                                <strong id="exec-sub-headers">95%</strong>
-                            </div>
-                            <div class="progress-track"><div id="exec-bar-headers" class="progress-fill" style="width: 95%;"></div></div>
-                        </div>
-                        <div class="exec-subscore-card">
-                            <div class="subscore-head">
-                                <span>🤖 AI & Prompt Defense</span>
-                                <strong id="exec-sub-ai">100%</strong>
-                            </div>
-                            <div class="progress-track"><div id="exec-bar-ai" class="progress-fill" style="width: 100%;"></div></div>
-                        </div>
-                        <div class="exec-subscore-card">
-                            <div class="subscore-head">
-                                <span>🔑 API & Authentication</span>
-                                <strong id="exec-sub-api">90%</strong>
-                            </div>
-                            <div class="progress-track"><div id="exec-bar-api" class="progress-fill" style="width: 90%;"></div></div>
-                        </div>
-                        <div class="exec-subscore-card">
-                            <div class="subscore-head">
-                                <span>⚖️ Business Logic & Surface</span>
-                                <strong id="exec-sub-logic">88%</strong>
-                            </div>
-                            <div class="progress-track"><div id="exec-bar-logic" class="progress-fill" style="width: 88%;"></div></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Severity Distribution Cards -->
-                <div class="exec-findings-summary">
-                    <div class="exec-sev-card sev-crit">
-                        <span class="sev-count" id="exec-crit-count">0</span>
-                        <span class="sev-label">CRITICAL (CVSS 9.0-10.0)</span>
-                    </div>
-                    <div class="exec-sev-card sev-high">
-                        <span class="sev-count" id="exec-high-count">1</span>
-                        <span class="sev-label">HIGH (CVSS 7.0-8.9)</span>
-                    </div>
-                    <div class="exec-sev-card sev-med">
-                        <span class="sev-count" id="exec-med-count">2</span>
-                        <span class="sev-label">MEDIUM (CVSS 4.0-6.9)</span>
-                    </div>
-                    <div class="exec-sev-card sev-low">
-                        <span class="sev-count" id="exec-low-count">3</span>
-                        <span class="sev-label">LOW (CVSS 0.1-3.9)</span>
-                    </div>
-                </div>
-
-                <!-- Compliance Readiness Matrix -->
-                <div class="exec-section">
-                    <h3 class="exec-section-title">🏛️ Enterprise Security & Regulatory Compliance Posture</h3>
-                    <div class="exec-compliance-grid">
-                        <div class="exec-comp-cell">
-                            <span class="comp-title">OWASP Web Top 10</span>
-                            <strong id="exec-comp-owasp" class="comp-status status-pass">✔ 94% Compliant</strong>
-                        </div>
-                        <div class="exec-comp-cell">
-                            <span class="comp-title">OWASP LLM AI Top 10</span>
-                            <strong id="exec-comp-llm" class="comp-status status-pass">✔ 98% Defended</strong>
-                        </div>
-                        <div class="exec-comp-cell">
-                            <span class="comp-title">SOC 2 Type II Security</span>
-                            <strong id="exec-comp-soc2" class="comp-status status-pass">✔ Ready for Audit</strong>
-                        </div>
-                        <div class="exec-comp-cell">
-                            <span class="comp-title">GDPR Data Privacy</span>
-                            <strong id="exec-comp-gdpr" class="comp-status status-pass">✔ Compliant</strong>
-                        </div>
-                        <div class="exec-comp-cell">
-                            <span class="comp-title">HIPAA Security Rule</span>
-                            <strong id="exec-comp-hipaa" class="comp-status status-pass">✔ Compliant</strong>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Prioritized Executive Remediation Roadmap -->
-                <div class="exec-section">
-                    <h3 class="exec-section-title">🗺️ Strategic Remediation Roadmap</h3>
-                    <div class="exec-roadmap-list" id="exec-roadmap-container">
-                        <!-- Populated dynamically -->
-                    </div>
-                </div>
-
-                <!-- Top Vulnerabilities Table -->
-                <div class="exec-section">
-                    <h3 class="exec-section-title">🚨 Key Risk Findings & Vulnerability Breakdown</h3>
-                    <div class="table-responsive">
-                        <table class="exec-findings-table">
-                            <thead>
-                                <tr>
-                                    <th style="width: 15%;">CVSS / Severity</th>
-                                    <th style="width: 30%;">Vulnerability Description</th>
-                                    <th style="width: 25%;">Business Risk Impact</th>
-                                    <th style="width: 30%;">Recommended Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="exec-findings-tbody">
-                                <!-- Populated dynamically -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Executive Sign-off Footer -->
-                <div class="exec-footer-signoff">
-                    <div class="signoff-left">
-                        <p><strong>Certified by:</strong> VIBE SHIELD Autonomous Multi-Agent Security Engine</p>
-                        <p class="text-dim">Generated automatically through dynamic surface discovery, active probing, and AI guardrail verification.</p>
-                    </div>
-                    <div class="signoff-right">
-                        <span class="audit-seal">🛡️ AUDIT VERIFIED</span>
-                    </div>
-                </div>
-            </div>
+        <div class="agent-card" id="agent-sec">
+          <div class="agent-card-top">
+            <span class="agent-name">Security Agent</span>
+            <span class="agent-status-pill" id="agent-sec-status">Waiting</span>
+          </div>
+          <div class="agent-log-text" id="agent-sec-log">Awaiting surface inventory...</div>
         </div>
-    </div>
+        <div class="agent-card" id="agent-ai">
+          <div class="agent-card-top">
+            <span class="agent-name">AI Agent</span>
+            <span class="agent-status-pill" id="agent-ai-status">Waiting</span>
+          </div>
+          <div class="agent-log-text" id="agent-ai-log">Awaiting surface inventory...</div>
+        </div>
+        <div class="agent-card" id="agent-logic">
+          <div class="agent-card-top">
+            <span class="agent-name">Logic Agent</span>
+            <span class="agent-status-pill" id="agent-logic-status">Waiting</span>
+          </div>
+          <div class="agent-log-text" id="agent-logic-log">Awaiting surface inventory...</div>
+        </div>
+        <div class="agent-card" id="agent-api">
+          <div class="agent-card-top">
+            <span class="agent-name">API Agent</span>
+            <span class="agent-status-pill" id="agent-api-status">Waiting</span>
+          </div>
+          <div class="agent-log-text" id="agent-api-log">Awaiting surface inventory...</div>
+        </div>
+      </div>
 
-    <script src="/app.js"></script>
+      <div class="console-box">
+        <div class="console-header">
+          <span class="console-title">Live Scan Console</span>
+          <div class="console-actions">
+            <div class="console-filter-btns" id="terminal-filter-group">
+              <button type="button" class="console-filter-btn active" data-filter="all">All</button>
+              <button type="button" class="console-filter-btn" data-filter="CRAWL">Crawl</button>
+              <button type="button" class="console-filter-btn" data-filter="SEC">Security</button>
+              <button type="button" class="console-filter-btn" data-filter="AI">AI</button>
+              <button type="button" class="console-filter-btn" data-filter="QA">QA</button>
+              <button type="button" class="console-filter-btn" data-filter="API">API</button>
+            </div>
+            <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:rgba(255,255,255,0.35);cursor:pointer;">
+              <input type="checkbox" id="terminal-autoscroll" checked style="accent-color:#fff">
+              <span>Auto-scroll</span>
+            </label>
+            <button type="button" class="console-btn" id="terminal-copy-btn">Copy</button>
+            <button type="button" class="console-btn" id="terminal-clear-btn">Clear</button>
+          </div>
+        </div>
+        <div class="console-body" id="terminal-output">
+          <div class="log-line"><span class="log-time">[00:00:00]</span><span class="log-agent">[SYSTEM]</span><span class="log-msg">Intelligence engine initialized. Awaiting dispatch...</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS LAYOUT (2-col: results + chatbot) -->
+    <section id="results-section" class="hidden">
+      <div class="results-layout">
+
+        <!-- ── LEFT: RESULTS ───────────────────────────────── -->
+        <div class="results-main">
+
+          <!-- Action bar -->
+          <div class="section-head">
+            <div>
+              <div class="section-title">Scan Results</div>
+              <div class="text-muted" id="results-meta-text" style="font-size:12px;margin-top:2px;">Completed audit</div>
+            </div>
+            <div class="section-actions">
+              <button type="button" id="view-report-html-btn" class="btn">Open Full Report ↗</button>
+              <button type="button" id="toggle-results-terminal-btn" class="btn">View Logs</button>
+              <button type="button" id="open-exec-report-results-btn" class="btn">PDF Report</button>
+              <button type="button" id="export-waf-bundle-btn" class="btn btn-primary">WAF Bundle</button>
+            </div>
+          </div>
+
+          <!-- Score card -->
+          <div class="score-card">
+            <div class="score-top">
+              <svg class="score-ring-svg" width="80" height="80" viewBox="0 0 80 80" id="score-ring-svg">
+                <circle cx="40" cy="40" r="34" fill="none" stroke="#f3f4f6" stroke-width="7"/>
+                <circle id="score-ring-arc" cx="40" cy="40" r="34" fill="none" stroke="#111827" stroke-width="7"
+                  stroke-dasharray="213.6" stroke-dashoffset="213.6" stroke-linecap="round"
+                  transform="rotate(-90 40 40)" style="transition:stroke-dashoffset 0.8s ease;"/>
+                <text x="40" y="36" text-anchor="middle" font-family="Inter" font-size="16" font-weight="700" fill="#111827" id="score-grade-text">—</text>
+                <text x="40" y="52" text-anchor="middle" font-family="Inter" font-size="9" fill="#9ca3af" id="score-number-text">—/100</text>
+              </svg>
+              <div class="score-info">
+                <div class="score-grade-label">Security Posture</div>
+                <div class="score-grade-value" id="score-status-text">—</div>
+                <div class="score-grade-sub" id="score-summary-desc">Run a scan to see results</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div id="live-badge-container"></div>
+                <div style="display:flex;gap:6px;">
+                  <button type="button" id="copy-badge-md-btn" class="btn" style="font-size:11px;padding:4px 9px;">Copy Badge MD</button>
+                  <button type="button" id="copy-badge-html-btn" class="btn" style="font-size:11px;padding:4px 9px;">Copy HTML</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="subscore-list">
+              <div class="subscore-row">
+                <span class="subscore-label">Headers & Perimeter</span>
+                <div class="subscore-track"><div class="subscore-fill" id="subscore-bar-headers" style="width:0%"></div></div>
+                <span class="subscore-val" id="subscore-val-headers">—</span>
+              </div>
+              <div class="subscore-row">
+                <span class="subscore-label">AI & Prompt Defense</span>
+                <div class="subscore-track"><div class="subscore-fill" id="subscore-bar-ai" style="width:0%"></div></div>
+                <span class="subscore-val" id="subscore-val-ai">—</span>
+              </div>
+              <div class="subscore-row">
+                <span class="subscore-label">API & Auth Hardening</span>
+                <div class="subscore-track"><div class="subscore-fill" id="subscore-bar-api" style="width:0%"></div></div>
+                <span class="subscore-val" id="subscore-val-api">—</span>
+              </div>
+              <div class="subscore-row">
+                <span class="subscore-label">Logic & Surface Hygiene</span>
+                <div class="subscore-track"><div class="subscore-fill" id="subscore-bar-logic" style="width:0%"></div></div>
+                <span class="subscore-val" id="subscore-val-logic">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Severity summary -->
+          <div class="sev-bar">
+            <div class="sev-chip" data-sev="critical"><span class="sev-count" id="count-critical">0</span><span class="sev-label">Critical</span></div>
+            <div class="sev-chip" data-sev="high"><span class="sev-count" id="count-high">0</span><span class="sev-label">High</span></div>
+            <div class="sev-chip" data-sev="medium"><span class="sev-count" id="count-medium">0</span><span class="sev-label">Medium</span></div>
+            <div class="sev-chip" data-sev="low"><span class="sev-count" id="count-low">0</span><span class="sev-label">Low</span></div>
+            <div class="sev-chip"><span class="sev-count" id="count-total">0</span><span class="sev-label">Total</span></div>
+          </div>
+
+          <!-- Security posture trend chart -->
+          <div class="chart-card">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+              <div>
+                <div class="chart-title">Security Posture Over Time</div>
+                <div class="chart-sub">How your security score evolves across scans</div>
+              </div>
+              <div class="trend-controls">
+                <div class="trend-kpis">
+                  <div class="trend-kpi"><span class="kpi-label">Velocity</span><span class="kpi-val" id="kpi-velocity">—</span></div>
+                  <div class="trend-kpi"><span class="kpi-label">Status</span><span class="kpi-val" id="kpi-status">—</span></div>
+                </div>
+                <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                  <button type="button" class="trend-filter-btn active" data-metric="overall">Overall</button>
+                  <button type="button" class="trend-filter-btn" data-metric="headers">Headers</button>
+                  <button type="button" class="trend-filter-btn" data-metric="ai">AI</button>
+                  <button type="button" class="trend-filter-btn" data-metric="api">API</button>
+                </div>
+              </div>
+            </div>
+            <div class="chart-area" id="trend-chart-wrapper">
+              <canvas id="trend-chart-canvas"></canvas>
+              <div id="trend-chart-tooltip" class="trend-tooltip hidden">
+                <div class="tt-head"><span id="tt-date">—</span><span id="tt-grade" class="tt-grade">—</span></div>
+                <div><span id="tt-score-val" class="tt-score">—</span><span style="font-size:12px;color:var(--text-muted)">/100</span></div>
+                <div class="tt-meta">
+                  <div>Target: <span id="tt-target">—</span></div>
+                  <div>Findings: <span id="tt-findings">—</span></div>
+                  <div>Duration: <span id="tt-duration">—</span></div>
+                </div>
+                <button type="button" id="tt-inspect-btn" class="btn" style="width:100%;margin-top:8px;font-size:10px;padding:4px 8px;">Inspect ↗</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Site map -->
+          <div class="canvas-card" id="sitemap-container">
+            <div class="canvas-card-header">
+              <span class="canvas-card-title">Attack Surface Map</span>
+              <div class="canvas-card-controls">
+                <input type="text" class="canvas-search" id="sitemap-search-input" placeholder="Search route...">
+                <button type="button" class="canvas-ctrl-btn" data-sitemap-filter="all">All</button>
+                <button type="button" class="canvas-ctrl-btn" data-sitemap-filter="api">APIs</button>
+                <button type="button" class="canvas-ctrl-btn" data-sitemap-filter="auth">Auth</button>
+                <button type="button" class="canvas-ctrl-btn" data-sitemap-filter="vuln">Vulnerable</button>
+                <button type="button" id="btn-toggle-sitemap-layout" class="canvas-ctrl-btn">Radial</button>
+                <button type="button" id="btn-reset-sitemap" class="canvas-ctrl-btn">Reset</button>
+              </div>
+            </div>
+            <div class="canvas-body" style="height:380px;">
+              <canvas id="sitemap-graph-canvas"></canvas>
+              <div id="sitemap-node-inspector" class="node-inspector hidden">
+                <button type="button" id="close-sitemap-inspector-btn" class="inspector-close">×</button>
+                <div class="inspector-label">Route</div>
+                <div class="inspector-title" id="sitemap-inspector-title">/</div>
+                <div class="inspector-label">Type</div>
+                <div class="inspector-val" id="sitemap-inspector-type">—</div>
+                <div class="inspector-label">Auth</div>
+                <div class="inspector-val" id="sitemap-inspector-auth">—</div>
+                <div class="inspector-label">Vulnerabilities</div>
+                <div class="inspector-val" id="sitemap-inspector-vulns">—</div>
+                <button type="button" id="sitemap-filter-table-btn" class="btn btn-primary" style="width:100%;margin-top:10px;font-size:11px;padding:5px 10px;">Filter Findings</button>
+              </div>
+            </div>
+            <div class="canvas-legend">
+              <div class="legend-item"><span class="legend-dot" style="background:#16a34a"></span>Public Page</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#2563eb"></span>API Endpoint</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#d97706"></span>Auth-Protected</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#7c3aed"></span>Form / Input</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#dc2626"></span>Vulnerable</div>
+            </div>
+          </div>
+
+          <!-- Attack chain graph -->
+          <div class="canvas-card">
+            <div class="canvas-card-header">
+              <span class="canvas-card-title">Attack Vector Chain</span>
+              <div class="canvas-card-controls">
+                <button type="button" id="btn-reset-graph" class="canvas-ctrl-btn">Reset</button>
+                <button type="button" id="btn-pulse-paths" class="canvas-ctrl-btn">Simulate Exploit</button>
+              </div>
+            </div>
+            <div class="canvas-body">
+              <canvas id="threat-graph-canvas"></canvas>
+              <div id="threat-node-inspector" class="node-inspector hidden">
+                <button type="button" id="close-inspector-btn" class="inspector-close">×</button>
+                <div class="inspector-label">Node</div>
+                <div class="inspector-title" id="inspector-title">—</div>
+                <div class="inspector-label">Stage</div>
+                <div class="inspector-val" id="inspector-stage">—</div>
+                <div class="inspector-label">Impact</div>
+                <div class="inspector-val" id="inspector-impact">—</div>
+                <div class="inspector-label">Fix</div>
+                <div class="inspector-val" id="inspector-fix">—</div>
+                <button type="button" id="inspector-patch-btn" class="btn btn-primary hidden" style="width:100%;margin-top:8px;font-size:11px;padding:5px 10px;">Open Patch Fix</button>
+              </div>
+            </div>
+            <div class="canvas-legend">
+              <div class="legend-item"><span class="legend-dot" style="background:#111827"></span>Entry Point</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#dc2626"></span>Vulnerability</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#d97706"></span>Exploitation</div>
+              <div class="legend-item"><span class="legend-dot" style="background:#7c3aed"></span>Impact</div>
+            </div>
+          </div>
+
+          <!-- Findings table -->
+          <div class="findings-section">
+            <div class="findings-header">
+              <div class="section-title">Findings</div>
+              <div class="findings-filter-row" id="findings-filter-row">
+                <button type="button" class="findings-filter-btn active" data-sev-filter="all">All</button>
+                <button type="button" class="findings-filter-btn" data-sev-filter="critical">Critical</button>
+                <button type="button" class="findings-filter-btn" data-sev-filter="high">High</button>
+                <button type="button" class="findings-filter-btn" data-sev-filter="medium">Medium</button>
+                <button type="button" class="findings-filter-btn" data-sev-filter="low">Low</button>
+              </div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="ft">
+                <thead>
+                  <tr>
+                    <th>CVSS</th>
+                    <th>Severity</th>
+                    <th>Vulnerability</th>
+                    <th>Module</th>
+                    <th>Surface</th>
+                    <th>OWASP</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="findings-table-body">
+                  <tr class="empty-row"><td colspan="7">No findings yet. Run a scan to see results.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- AI Threat Matrix -->
+          <div class="ai-matrix-section">
+            <div class="section-head">
+              <div class="section-title">OWASP Top 10 for LLMs — Threat Matrix</div>
+              <button type="button" id="run-matrix-sim-btn" class="btn btn-primary">Run Threat Simulation</button>
+            </div>
+            <div id="ai-matrix-grid" class="ai-matrix-grid">
+              <div style="color:var(--text-faint);font-size:13px;grid-column:span 2;">Loading threat taxonomy...</div>
+            </div>
+          </div>
+
+          <!-- Results console drawer -->
+          <div id="results-terminal-drawer" class="console-box hidden" style="margin-top:16px;">
+            <div class="console-header">
+              <span class="console-title">Execution Logs — <span id="results-terminal-scan-id"></span></span>
+              <div class="console-actions">
+                <div class="console-filter-btns" id="results-terminal-filter-group">
+                  <button type="button" class="console-filter-btn active" data-filter="all">All</button>
+                  <button type="button" class="console-filter-btn" data-filter="CRAWL">Crawl</button>
+                  <button type="button" class="console-filter-btn" data-filter="SEC">Security</button>
+                  <button type="button" class="console-filter-btn" data-filter="AI">AI</button>
+                </div>
+                <button type="button" class="console-btn" id="results-terminal-copy-btn">Copy</button>
+                <button type="button" class="console-btn" id="results-terminal-close-btn">Close</button>
+              </div>
+            </div>
+            <div class="console-body" id="results-terminal-output">
+              <div class="log-line"><span class="log-time">[00:00:00]</span><span class="log-msg log-info">Execution stream ready.</span></div>
+            </div>
+          </div>
+
+          <!-- Scan History -->
+          <div class="divider"></div>
+          <div class="history-section" id="history-section">
+            <div class="findings-header">
+              <div class="section-title">Recent Scans</div>
+              <div class="text-muted" style="font-size:12px;">Click any row to reload results</div>
+            </div>
+            <div class="history-list-inner" id="history-list">
+              <div style="color:var(--text-faint);font-size:13px;padding:20px 0;">Loading history...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── RIGHT: CHATBOT ──────────────────────────────── -->
+        <div class="results-sidebar">
+          <div class="chatbot-panel">
+            <div class="chatbot-header">
+              <div class="chatbot-title">
+                <span class="chatbot-online"></span>
+                Security Assistant
+              </div>
+              <span style="font-size:11px;color:var(--text-faint);">Context-aware</span>
+            </div>
+
+            <div class="chatbot-messages" id="chatbot-messages">
+              <div class="chat-msg bot">
+                <div class="chat-bubble">Hi! I'm your security assistant. Run a scan and I'll help you understand the results — just ask me anything about the findings, vulnerabilities, or what to fix first.</div>
+                <span class="chat-time">Now</span>
+              </div>
+            </div>
+
+            <div class="chat-suggestions" id="chat-suggestions">
+              <button type="button" class="chat-suggestion-btn" data-q="What are the most critical issues?">Most critical issues?</button>
+              <button type="button" class="chat-suggestion-btn" data-q="What should I fix first?">Fix priority?</button>
+              <button type="button" class="chat-suggestion-btn" data-q="Explain my security score">Explain my score</button>
+              <button type="button" class="chat-suggestion-btn" data-q="What is XSS and how do I fix it?">What is XSS?</button>
+            </div>
+
+            <div class="chatbot-input-row">
+              <input type="text" id="chatbot-input" placeholder="Ask about vulnerabilities, fixes, score...">
+              <button type="button" id="chatbot-send-btn">Send</button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /results-layout -->
+    </section>
+
+  </main>
+
+  <footer style="border-top:1px solid var(--border);padding:16px 24px;text-align:center;font-size:12px;color:var(--text-faint);">
+    VIBE SHIELD — Autonomous Security Intelligence by <strong>Aarav Khanal</strong>
+  </footer>
+</div><!-- /app-shell -->
+
+<!-- ═══ SIDE PANELS ══════════════════════════════════════════ -->
+
+<!-- Patch Panel -->
+<div id="patch-panel" class="panel-backdrop hidden">
+  <div class="side-panel">
+    <div class="panel-header">
+      <div><div class="panel-title" id="patch-finding-title">AI Auto-Patch</div><div class="panel-sub">Remediation code for this vulnerability</div></div>
+      <button type="button" id="close-patch-modal-btn" class="panel-close">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="patch-rec" id="patch-recommendation-text">Loading recommendation...</div>
+      <div class="framework-tabs" id="framework-tabs"></div>
+      <div class="code-block-wrap">
+        <div class="code-block-bar">
+          <span class="code-block-label" id="patch-target-file">patch.ts</span>
+          <button type="button" class="code-copy-btn" id="copy-patch-btn"><span id="copy-btn-text">Copy</span></button>
+        </div>
+        <code class="code-content" id="patch-code-content">// Generating patch...</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CVSS Panel -->
+<div id="cvss-panel" class="panel-backdrop hidden">
+  <div class="side-panel">
+    <div class="panel-header">
+      <div><div class="panel-title" id="cvss-finding-title">CVSS v3.1 Calculator</div><div class="panel-sub">Quantitative vulnerability scoring</div></div>
+      <button type="button" id="close-cvss-modal-btn" class="panel-close">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="cvss-score-display">
+        <div class="cvss-score-num" id="cvss-score-num">9.8</div>
+        <div class="cvss-score-sub"><span id="cvss-severity-badge">CRITICAL</span> · <span id="cvss-qualitative-desc">Remotely exploitable with catastrophic impact</span></div>
+      </div>
+      <div class="cvss-vector-box" id="cvss-vector-string">CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</div>
+      <div style="display:flex;gap:6px;margin-bottom:16px;">
+        <button type="button" id="cvss-copy-vector-btn" class="btn" style="font-size:11px;">Copy Vector</button>
+        <button type="button" id="cvss-copy-json-btn" class="btn" style="font-size:11px;">Copy JSON</button>
+      </div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin-bottom:8px;">Threat Presets</div>
+      <div class="cvss-presets">
+        <button type="button" class="btn-cvss-preset" data-preset="prompt-injection">Prompt Injection</button>
+        <button type="button" class="btn-cvss-preset" data-preset="sqli">SQL Injection</button>
+        <button type="button" class="btn-cvss-preset" data-preset="ssrf">SSRF</button>
+        <button type="button" class="btn-cvss-preset" data-preset="secrets">Hardcoded Secret</button>
+        <button type="button" class="btn-cvss-preset" data-preset="cors">Wildcard CORS</button>
+        <button type="button" class="btn-cvss-preset" data-preset="headers">Missing CSP/HSTS</button>
+        <button type="button" class="btn-cvss-preset" data-preset="cookie">Insecure Cookie</button>
+      </div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin:16px 0 12px;">Exploitability Metrics</div>
+      <div class="cvss-metric-group" data-metric="AV">
+        <span class="metric-name">Attack Vector (AV) — <span id="desc-AV" style="font-weight:400;text-transform:none;letter-spacing:0;">Network</span></span>
+        <div class="metric-btn-group">
+          <button type="button" class="btn-metric" data-val="N">Network (N)</button>
+          <button type="button" class="btn-metric" data-val="A">Adjacent (A)</button>
+          <button type="button" class="btn-metric" data-val="L">Local (L)</button>
+          <button type="button" class="btn-metric" data-val="P">Physical (P)</button>
+        </div>
+      </div>
+      <div class="cvss-metric-group" data-metric="AC">
+        <span class="metric-name">Attack Complexity (AC) — <span id="desc-AC" style="font-weight:400;text-transform:none;letter-spacing:0;">Low</span></span>
+        <div class="metric-btn-group">
+          <button type="button" class="btn-metric" data-val="L">Low (L)</button>
+          <button type="button" class="btn-metric" data-val="H">High (H)</button>
+        </div>
+      </div>
+      <div class="cvss-metric-group" data-metric="PR">
+        <span class="metric-name">Privileges Required (PR) — <span id="desc-PR" style="font-weight:400;text-transform:none;letter-spacing:0;">None</span></span>
+        <div class="metric-btn-group">
+          <button type="button" class="btn-metric" data-val="N">None (N)</button>
+          <button type="button" class="btn-metric" data-val="L">Low (L)</button>
+          <button type="button" class="btn-metric" data-val="H">High (H)</button>
+        </div>
+      </div>
+      <div class="cvss-metric-group" data-metric="UI">
+        <span class="metric-name">User Interaction (UI) — <span id="desc-UI" style="font-weight:400;text-transform:none;letter-spacing:0;">None</span></span>
+        <div class="metric-btn-group">
+          <button type="button" class="btn-metric" data-val="N">None (N)</button>
+          <button type="button" class="btn-metric" data-val="R">Required (R)</button>
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin:16px 0 12px;">Impact Metrics</div>
+      <div class="cvss-metric-group" data-metric="S">
+        <span class="metric-name">Scope (S) — <span id="desc-S" style="font-weight:400;text-transform:none;letter-spacing:0;">Unchanged</span></span>
+        <div class="metric-btn-group">
+          <button type="button" class="btn-metric" data-val="U">Unchanged (U)</button>
+          <button type="button" class="btn-metric" data-val="C">Changed (C)</button>
+        </div>
+      </div>
+      <div class="cvss-metric-group" data-metric="C">
+        <span class="metric-name">Confidentiality (C) — <span id="desc-C" style="font-weight:400;text-transform:none;letter-spacing:0;">High</span></span>
+        <div class="metric-btn-group">
+          <button type="button" class="btn-metric" data-val="N">None (N)</button>
+          <button type="button" class="btn-metric" data-val="L">Low (L)</button>
+          <button type="button" class="btn-metric" data-val="H">High (H)</button>
+        </div>
+      </div>
+      <div class="cvss-metric-group" data-metric="I">
+        <span class="metric-name">Integrity (I) — <span id="desc-I" style="font-weight:400;text-transform:none;letter-spacing:0;">High</span></span>
+        <div class="metric-btn-group">
+          <button type="button" class="btn-metric" data-val="N">None (N)</button>
+          <button type="button" class="btn-metric" data-val="L">Low (L)</button>
+          <button type="button" class="btn-metric" data-val="H">High (H)</button>
+        </div>
+      </div>
+      <div class="cvss-metric-group" data-metric="A">
+        <span class="metric-name">Availability (A) — <span id="desc-A" style="font-weight:400;text-transform:none;letter-spacing:0;">High</span></span>
+        <div class="metric-btn-group">
+          <button type="button" class="btn-metric" data-val="N">None (N)</button>
+          <button type="button" class="btn-metric" data-val="L">Low (L)</button>
+          <button type="button" class="btn-metric" data-val="H">High (H)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- WAF Panel -->
+<div id="waf-panel" class="panel-backdrop hidden">
+  <div class="side-panel" style="width:680px;">
+    <div class="panel-header">
+      <div><div class="panel-title">WAF & Hardening Bundle</div><div class="panel-sub" id="waf-findings-count">Production-ready firewall rules & patches</div></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button type="button" id="waf-download-all-btn" class="btn btn-primary" style="font-size:11px;">Download Bundle</button>
+        <button type="button" id="close-waf-modal-btn" class="panel-close">×</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="info-row" style="margin-bottom:12px;">
+        <span class="info-label">Target</span>
+        <span class="info-val" id="waf-target-domain">—</span>
+      </div>
+      <div class="panel-tabs" id="waf-tabs">
+        <button type="button" class="panel-tab active" data-tab="nginx">Nginx WAF</button>
+        <button type="button" class="panel-tab" data-tab="cloudflare">Cloudflare</button>
+        <button type="button" class="panel-tab" data-tab="caddy">Caddy</button>
+        <button type="button" class="panel-tab" data-tab="gitPatch">GitHub Patch</button>
+        <button type="button" class="panel-tab" data-tab="env">.env Template</button>
+        <button type="button" class="panel-tab" data-tab="docker">Dockerfile</button>
+      </div>
+      <div class="code-block-wrap">
+        <div class="code-block-bar">
+          <span class="code-block-label" id="waf-file-path">/etc/nginx/conf.d/security.conf</span>
+          <div style="display:flex;gap:5px;">
+            <button type="button" class="code-copy-btn" id="waf-copy-code-btn"><span id="waf-copy-btn-text">Copy</span></button>
+            <button type="button" class="code-copy-btn" id="waf-download-file-btn">Download</button>
+          </div>
+        </div>
+        <code class="code-content" id="waf-code-content">// Generating rules...</code>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);padding:10px 12px;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--radius-sm);">
+        <span style="font-weight:600;">Deploy command:</span><br>
+        <code id="waf-deploy-command" style="font-family:'Fira Code',monospace;font-size:11px;color:var(--text);">sudo nginx -t && sudo systemctl reload nginx</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Threat Simulation Panel -->
+<div id="ai-sim-panel" class="panel-backdrop hidden">
+  <div class="side-panel">
+    <div class="panel-header">
+      <div><div class="panel-title" id="sim-modal-title">AI Threat Simulation</div><div class="panel-sub">Multi-turn adversarial probe</div></div>
+      <button type="button" id="close-ai-sim-modal-btn" class="panel-close">×</button>
+    </div>
+    <div class="panel-body">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+        <span id="sim-threat-id" style="font-size:11px;font-weight:700;padding:3px 8px;background:var(--bg-muted);border:1px solid var(--border);border-radius:4px;">LLM01</span>
+        <span id="sim-threat-sev" class="sev-badge critical">Critical</span>
+        <span id="sim-threat-status" style="font-size:10px;font-weight:600;padding:2px 7px;background:#f0fdf4;color:var(--accent-green);border-radius:4px;">Defended</span>
+      </div>
+      <p id="sim-threat-desc" style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;">Adversary manipulates LLM behavior through crafted user inputs.</p>
+      <div class="sim-dialogue" id="sim-dialogue-stream"></div>
+      <div class="sim-metrics">
+        <div class="sim-metric"><div class="sim-metric-label">Defense Verdict</div><div class="sim-metric-val" id="sim-telemetry-verdict">—</div></div>
+        <div class="sim-metric"><div class="sim-metric-label">Latency</div><div class="sim-metric-val" id="sim-telemetry-latency">—</div></div>
+        <div class="sim-metric"><div class="sim-metric-label">Tokens</div><div class="sim-metric-val" id="sim-telemetry-tokens">—</div></div>
+        <div class="sim-metric"><div class="sim-metric-label">Guardrail Rule</div><div class="sim-metric-val" id="sim-telemetry-rule" style="font-size:11px;">—</div></div>
+      </div>
+      <div class="code-block-wrap">
+        <div class="code-block-bar">
+          <span class="code-block-label">guardrails/ai-defense-policy.ts</span>
+          <button type="button" class="code-copy-btn" id="sim-copy-code-btn"><span id="sim-copy-btn-text">Copy</span></button>
+        </div>
+        <code class="code-content" id="sim-code-content">// Generating guardrail policy...</code>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" id="sim-rerun-btn" class="btn btn-primary">Re-Run Probe</button>
+        <button type="button" id="sim-next-btn" class="btn">Next Vector →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CI/CD Panel -->
+<div id="webhook-panel" class="panel-backdrop hidden">
+  <div class="side-panel" style="width:680px;">
+    <div class="panel-header">
+      <div><div class="panel-title">CI/CD & Webhook Hub</div><div class="panel-sub">Auto-scan any URL on every push or PR</div></div>
+      <button type="button" id="close-webhook-modal-btn" class="panel-close">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="info-row">
+        <span class="info-label">Webhook Endpoint</span>
+        <code id="webhook-endpoint-url" style="font-family:'Fira Code',monospace;font-size:12px;color:var(--text);">POST http://localhost:3000/api/webhook/scan</code>
+      </div>
+
+      <div class="panel-form-row" style="margin-bottom:16px;">
+        <div class="panel-form-field"><label>Min Score (0-100)</label><input type="number" id="gate-min-score" min="0" max="100" value="80"><div class="panel-hint">PR fails if score drops below this</div></div>
+        <div class="panel-form-field"><label>Max Critical</label><input type="number" id="gate-max-critical" min="0" max="10" value="0"><div class="panel-hint">PR fails if critical findings exceed this</div></div>
+        <div class="panel-form-field"><label>Max High</label><input type="number" id="gate-max-high" min="0" max="20" value="2"><div class="panel-hint">PR fails if high findings exceed this</div></div>
+      </div>
+
+      <div class="panel-tabs" id="webhook-tabs">
+        <button type="button" class="panel-tab active" data-tab="github">GitHub Actions</button>
+        <button type="button" class="panel-tab" data-tab="curl">cURL</button>
+        <button type="button" class="panel-tab" data-tab="gitlab">GitLab CI</button>
+        <button type="button" class="panel-tab" data-tab="nodejs">Node.js</button>
+      </div>
+
+      <div class="code-block-wrap">
+        <div class="code-block-bar">
+          <span class="code-block-label" id="webhook-file-path">.github/workflows/vibe-shield.yml</span>
+          <button type="button" class="code-copy-btn" id="webhook-copy-code-btn"><span id="webhook-copy-btn-text">Copy</span></button>
+        </div>
+        <code class="code-content" id="webhook-code-content">// Loading template...</code>
+      </div>
+
+      <button type="button" id="btn-test-webhook-trigger" class="btn btn-primary">Test Webhook Now</button>
+      <div id="webhook-test-result" class="webhook-test-result hidden"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Executive Report Panel -->
+<div id="executive-report-panel" class="panel-backdrop hidden">
+  <div class="side-panel" style="width:700px;">
+    <div class="panel-header">
+      <div><div class="panel-title">Executive Security Report</div><div class="panel-sub">Shareable audit dossier</div></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button type="button" id="exec-print-pdf-btn" class="btn btn-primary" style="font-size:11px;">Print / Save PDF</button>
+        <button type="button" id="exec-copy-md-btn" class="btn" style="font-size:11px;">Copy Markdown</button>
+        <button type="button" id="close-exec-modal-btn" class="panel-close">×</button>
+      </div>
+    </div>
+    <div class="panel-body" id="printable-exec-content">
+      <div class="exec-banner">
+        <div style="font-size:16px;font-weight:700;margin-bottom:4px;">VIBE SHIELD Security Intelligence</div>
+        <div style="font-size:12px;color:var(--text-muted);">Autonomous Multi-Agent Application Security Audit</div>
+        <div class="exec-meta-grid">
+          <div><div class="exec-meta-label">Target</div><div class="exec-meta-val" id="exec-meta-url">—</div></div>
+          <div><div class="exec-meta-label">Date</div><div class="exec-meta-val" id="exec-meta-date">—</div></div>
+          <div><div class="exec-meta-label">Duration</div><div class="exec-meta-val" id="exec-meta-duration">—</div></div>
+          <div><div class="exec-meta-label">Score</div><div class="exec-meta-val" id="exec-meta-score">—</div></div>
+        </div>
+      </div>
+
+      <div id="exec-risk-summary" class="exec-findings-grid">
+        <div class="exec-finding-stat"><div class="exec-finding-count" id="exec-count-critical" style="color:var(--accent-red)">0</div><div class="exec-finding-label">Critical</div></div>
+        <div class="exec-finding-stat"><div class="exec-finding-count" id="exec-count-high" style="color:var(--accent-amber)">0</div><div class="exec-finding-label">High</div></div>
+        <div class="exec-finding-stat"><div class="exec-finding-count" id="exec-count-medium" style="color:var(--accent-blue)">0</div><div class="exec-finding-label">Medium</div></div>
+        <div class="exec-finding-stat"><div class="exec-finding-count" id="exec-count-low" style="color:var(--accent-green)">0</div><div class="exec-finding-label">Low</div></div>
+      </div>
+
+      <div id="exec-findings-detail" style="font-size:13px;color:var(--text);">Run a scan and open this report to see the full executive dossier.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Panel -->
+<div id="settings-panel" class="panel-backdrop hidden">
+  <div class="side-panel">
+    <div class="panel-header">
+      <div><div class="panel-title">Settings</div><div class="panel-sub">API key, integrations, preferences</div></div>
+      <button type="button" id="close-settings-panel-btn" class="panel-close">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="settings-item">
+        <div class="settings-item-title">API Key</div>
+        <div class="settings-item-desc">Use this key in CI/CD workflows and webhook integrations via the <code style="font-family:'Fira Code',monospace;font-size:11px;">x-api-key</code> header.</div>
+        <div class="api-key-display">
+          <span class="api-key-text" id="api-key-display-text">Loading...</span>
+          <button type="button" class="key-action-btn" id="reveal-api-key-btn">Reveal</button>
+          <button type="button" class="key-action-btn" id="copy-api-key-btn">Copy</button>
+          <button type="button" class="key-action-btn danger" id="regen-api-key-btn">Regenerate</button>
+        </div>
+      </div>
+
+      <div class="settings-item">
+        <div class="settings-item-title">CVSS v3.1 Lab</div>
+        <div class="settings-item-desc">Open the vulnerability scoring calculator to compute CVSS scores for any finding.</div>
+        <button type="button" id="open-cvss-lab-btn" class="btn">Open CVSS Calculator</button>
+      </div>
+
+      <div class="settings-item">
+        <div class="settings-item-title">About</div>
+        <div class="settings-item-desc">VIBE SHIELD v1.0.0 — Autonomous Security & Quality Intelligence<br>Built by Aarav Khanal</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="/app.js" type="module"></script>
 </body>
 </html>

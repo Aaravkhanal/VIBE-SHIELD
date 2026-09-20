@@ -17,46 +17,138 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load initial history
     loadHistory();
 
-    // Module checkbox chip toggles
-    document.querySelectorAll('.chip input').forEach(checkbox => {
-        checkbox.addEventListener('change', (e) => {
-            const label = e.target.closest('.chip');
-            if (e.target.checked) label.classList.add('active');
-            else label.classList.remove('active');
+    // ── Scan config panel toggle ──────────────────────────
+    const scanConfigToggleBtn = document.getElementById('scan-config-toggle-btn');
+    const scanConfigPanel = document.getElementById('scan-config-panel');
+    const configChevron = document.getElementById('config-chevron');
+    if (scanConfigToggleBtn && scanConfigPanel) {
+        scanConfigToggleBtn.addEventListener('click', () => {
+            const open = scanConfigPanel.classList.toggle('visible');
+            if (configChevron) configChevron.classList.toggle('open', open);
+        });
+    }
+
+    // ── Module check toggles (new .module-check class) ────
+    document.querySelectorAll('.module-check').forEach(label => {
+        label.addEventListener('click', () => {
+            label.classList.toggle('checked');
+            const cb = label.querySelector('input[type="checkbox"]');
+            if (cb) cb.checked = label.classList.contains('checked');
         });
     });
 
-    // Form Submit -> Trigger Scan API
+    // ── Auth tab switching ────────────────────────────────
+    let currentAuthStrategy = 'none';
+    document.querySelectorAll('.auth-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentAuthStrategy = btn.dataset.auth;
+            document.querySelectorAll('.auth-fields').forEach(f => f.classList.remove('active'));
+            const panel = document.getElementById(`auth-panel-${currentAuthStrategy}`);
+            if (panel) panel.classList.add('active');
+        });
+    });
+
+    // ── Auth drawer expand ────────────────────────────────
+    const authExpandBtn = document.getElementById('auth-expand-btn');
+    const authExpandBody = document.getElementById('auth-expand-body');
+    if (authExpandBtn && authExpandBody) {
+        authExpandBtn.addEventListener('click', () => {
+            authExpandBody.classList.toggle('open');
+            const arrow = document.getElementById('auth-expand-arrow');
+            if (arrow) arrow.textContent = authExpandBody.classList.contains('open') ? '▴' : '▾';
+        });
+    }
+
+    // ── Nav panel wiring ──────────────────────────────────
+    const openPanel = (id) => { const el = document.getElementById(id); if (el) el.classList.remove('hidden'); };
+    const closePanel = (id) => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); };
+
+    const navMap = {
+        'nav-history-btn': () => document.getElementById('history-section')?.scrollIntoView({ behavior: 'smooth' }),
+        'nav-cicd-btn': () => openPanel('webhook-panel'),
+        'nav-waf-btn': () => openPanel('waf-panel'),
+        'nav-threat-btn': () => openPanel('ai-sim-panel'),
+        'nav-report-btn': () => openPanel('executive-report-panel'),
+        'nav-settings-btn': () => { openPanel('settings-panel'); loadApiKey(); }
+    };
+    Object.entries(navMap).forEach(([id, fn]) => {
+        const btn = document.getElementById(id);
+        if (btn) btn.addEventListener('click', fn);
+    });
+
+    // Close panels on backdrop click
+    document.querySelectorAll('.panel-backdrop').forEach(backdrop => {
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) backdrop.classList.add('hidden');
+        });
+    });
+
+    // Panel close buttons
+    [
+        ['close-patch-modal-btn', 'patch-panel'],
+        ['close-cvss-modal-btn', 'cvss-panel'],
+        ['close-waf-modal-btn', 'waf-panel'],
+        ['close-ai-sim-modal-btn', 'ai-sim-panel'],
+        ['close-webhook-modal-btn', 'webhook-panel'],
+        ['close-exec-modal-btn', 'executive-report-panel'],
+        ['close-settings-panel-btn', 'settings-panel']
+    ].forEach(([btnId, panelId]) => {
+        const btn = document.getElementById(btnId);
+        if (btn) btn.addEventListener('click', () => closePanel(panelId));
+    });
+
+    // Header result-section buttons that open panels
+    const btnMap = {
+        'open-exec-report-results-btn': 'executive-report-panel',
+        'open-exec-modal-header-btn': 'executive-report-panel',
+        'open-waf-modal-header-btn': 'waf-panel',
+        'open-ai-matrix-header-btn': 'ai-sim-panel',
+        'open-cicd-modal-header-btn': 'webhook-panel',
+        'open-cvss-lab-btn': 'cvss-panel'
+    };
+    Object.entries(btnMap).forEach(([btnId, panelId]) => {
+        const btn = document.getElementById(btnId);
+        if (btn) btn.addEventListener('click', () => openPanel(panelId));
+    });
+
+    // WAF bundle button
+    const wafBundleBtn = document.getElementById('export-waf-bundle-btn');
+    if (wafBundleBtn) wafBundleBtn.addEventListener('click', () => openPanel('waf-panel'));
+
+    // ── Form Submit ───────────────────────────────────────
     scanForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const url = targetUrlInput.value.trim();
         if (!url) return;
 
-        // Collect modules & safety settings
-        const modules = Array.from(document.querySelectorAll('input[name="modules"]:checked')).map(cb => cb.value);
-        const safetyMode = document.getElementById('safety-mode').value;
-        const maxPages = document.getElementById('max-pages').value;
+        // Collect modules from new .module-check.checked labels
+        const modules = Array.from(document.querySelectorAll('.module-check.checked input[type="checkbox"]')).map(cb => cb.value);
+        if (!modules.length) modules.push('qa', 'security', 'ai', 'logic', 'api');
 
-        // Collect authentication parameters
-        const authStrategy = document.querySelector('input[name="auth-strategy"]:checked')?.value || 'none';
-        let authConfig = { strategy: authStrategy };
+        const safetyMode = document.getElementById('safety-mode')?.value || 'safe-active';
+        const maxPages = document.getElementById('max-pages')?.value || '25';
 
-        if (authStrategy === 'form') {
+        // Auth from tab-based UI
+        let authConfig = { strategy: currentAuthStrategy };
+        if (currentAuthStrategy === 'form') {
             authConfig.loginUrl = document.getElementById('auth-login-url')?.value?.trim() || '';
             authConfig.username = document.getElementById('auth-username')?.value?.trim() || '';
             authConfig.password = document.getElementById('auth-password')?.value?.trim() || '';
             authConfig.role = document.getElementById('auth-role-name')?.value?.trim() || 'admin';
-        } else if (authStrategy === 'token') {
+        } else if (currentAuthStrategy === 'token') {
             authConfig.bearerToken = document.getElementById('auth-bearer-token')?.value?.trim() || '';
             authConfig.role = document.getElementById('auth-token-role')?.value?.trim() || 'authenticated-user';
-        } else if (authStrategy === 'cookie') {
+        } else if (currentAuthStrategy === 'cookie') {
             authConfig.cookies = document.getElementById('auth-cookies')?.value?.trim() || '';
             authConfig.role = document.getElementById('auth-cookie-role')?.value?.trim() || 'session-user';
         }
 
         // UI Transition
         startBtn.disabled = true;
-        startBtn.querySelector('.btn-text').textContent = 'Scan Initiated...';
+        startBtn.textContent = 'Scanning...';
+        startBtn.classList.add('scanning');
         progressSection.classList.remove('hidden');
         resultsSection.classList.add('hidden');
         currentTargetDisplay.textContent = url;
@@ -80,7 +172,8 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('Scan Error: ' + err.message, 'error');
             stopTimer();
             startBtn.disabled = false;
-            startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
+            startBtn.textContent = 'Scan →';
+            startBtn.classList.remove('scanning');
         }
     });
 
@@ -119,7 +212,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             clearTimeout(fallbackTimeout);
                             stopTimer();
                             startBtn.disabled = false;
-                            startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
+                            startBtn.textContent = 'Scan →';
+                            startBtn.classList.remove('scanning');
                             return;
                         }
 
@@ -143,9 +237,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             activeEventSource = null;
                             stopTimer();
                             startBtn.disabled = false;
-                            startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
+                            startBtn.textContent = 'Scan →';
+                            startBtn.classList.remove('scanning');
                             displayResults(status);
                             loadHistory();
+                            if (window.chatbotController) window.chatbotController.onScanComplete(status);
                         }
                     } catch (e) {
                         console.error('Error parsing SSE scan status:', e);
@@ -179,8 +275,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (existingTimeout) clearTimeout(existingTimeout);
                 stopTimer();
                 startBtn.disabled = false;
-                startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
-                showToast('⚠️ Scan timed out after 10 minutes.', 'error');
+                startBtn.textContent = 'Scan →';
+                startBtn.classList.remove('scanning');
+                showToast('Scan timed out after 10 minutes.', 'error');
                 return;
             }
 
@@ -207,9 +304,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (existingTimeout) clearTimeout(existingTimeout);
                     stopTimer();
                     startBtn.disabled = false;
-                    startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
+                    startBtn.textContent = 'Scan →';
+                    startBtn.classList.remove('scanning');
                     displayResults(status);
                     loadHistory();
+                    if (window.chatbotController) window.chatbotController.onScanComplete(status);
                 }
             } catch (e) {
                 console.error('Error polling status:', e);
@@ -217,59 +316,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
 
-    // Toast notification system
+    // ── Toast notification system ──────────────────────
     function showToast(message, type = 'info') {
-        const existing = document.getElementById('vibe-toast');
-        if (existing) existing.remove();
-
+        const container = document.getElementById('toast-container');
         const toast = document.createElement('div');
-        toast.id = 'vibe-toast';
-        toast.style.cssText = `
-            position: fixed; bottom: 28px; right: 28px; z-index: 999;
-            padding: 14px 20px; border-radius: 10px; font-size: 13px; font-weight: 600;
-            display: flex; align-items: center; gap: 10px;
-            backdrop-filter: blur(16px); animation: toastIn 0.3s ease;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.5);
-            border: 1px solid ${ type === 'error' ? 'rgba(255,51,102,0.4)' : type === 'success' ? 'rgba(0,255,136,0.4)' : 'rgba(0,229,255,0.4)' };
-            background: ${ type === 'error' ? 'rgba(255,51,102,0.12)' : type === 'success' ? 'rgba(0,255,136,0.12)' : 'rgba(0,229,255,0.12)' };
-            color: ${ type === 'error' ? '#ff3366' : type === 'success' ? '#00ff88' : '#00e5ff' };
-        `;
+        toast.className = `toast ${type}`;
         toast.textContent = message;
-
-        // Add keyframe if not present
-        if (!document.getElementById('toast-style')) {
-            const s = document.createElement('style');
-            s.id = 'toast-style';
-            s.textContent = '@keyframes toastIn { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform:translateY(0); } }';
-            document.head.appendChild(s);
+        if (container) {
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
         }
-
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 4000);
     }
 
     function updateAgentState(key, agentData) {
         if (!agentData) return;
         const card = document.getElementById(`agent-${key}`);
         if (!card) return;
-
-        const badge = card.querySelector('.agent-badge');
-        const log = card.querySelector('.agent-log');
-
-        badge.className = 'agent-badge badge-' + agentData.status;
-        badge.textContent = agentData.status.toUpperCase();
-        log.textContent = agentData.message || agentData.status;
+        const badge = card.querySelector('.agent-status-pill');
+        const log = card.querySelector('.agent-log-text');
+        const statusMap = { 'running': 'running', 'done': 'done', 'complete': 'done', 'error': 'error', 'pending': '', 'waiting': '' };
+        if (badge) {
+            badge.className = 'agent-status-pill ' + (statusMap[agentData.status] || '');
+            badge.textContent = agentData.status ? agentData.status.charAt(0).toUpperCase() + agentData.status.slice(1) : 'Waiting';
+        }
+        if (log) log.textContent = agentData.message || agentData.status || '...';
     }
 
     function resetAgentCards() {
         ['crawl', 'qa', 'sec', 'ai', 'logic', 'api'].forEach(key => {
             const card = document.getElementById(`agent-${key}`);
             if (card) {
-                const badge = card.querySelector('.agent-badge');
-                const log = card.querySelector('.agent-log');
-                badge.className = 'agent-badge badge-pending';
-                badge.textContent = 'Pending';
-                log.textContent = 'Waiting for execution...';
+                const badge = card.querySelector('.agent-status-pill');
+                const log = card.querySelector('.agent-log-text');
+                if (badge) { badge.className = 'agent-status-pill'; badge.textContent = 'Waiting'; }
+                if (log) log.textContent = 'Awaiting dispatch...';
             }
         });
     }
@@ -295,26 +375,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const scoreData = calculateSecurityScore(report);
         currentScoreData = scoreData;
 
-        const scoreCircle = document.getElementById('score-circle');
         const scoreGradeText = document.getElementById('score-grade-text');
         const scoreNumberText = document.getElementById('score-number-text');
         const scoreStatusText = document.getElementById('score-status-text');
+        const scoreSummaryDesc = document.getElementById('score-summary-desc');
+        const scoreRingArc = document.getElementById('score-ring-arc');
         const liveBadgeContainer = document.getElementById('live-badge-container');
 
-        if (scoreGradeText) {
-            scoreGradeText.textContent = scoreData.grade;
-            scoreGradeText.style.color = scoreData.gradeColor;
-            scoreGradeText.style.textShadow = `0 0 12px ${scoreData.gradeColor}88`;
-        }
-        if (scoreNumberText) {
-            scoreNumberText.textContent = `${scoreData.overallScore}/100`;
-        }
-        if (scoreStatusText) {
-            scoreStatusText.textContent = scoreData.statusText;
-        }
-        if (scoreCircle) {
-            scoreCircle.style.borderColor = scoreData.gradeColor;
-            scoreCircle.style.boxShadow = `0 0 25px ${scoreData.gradeColor}44, inset 0 0 15px ${scoreData.gradeColor}22`;
+        if (scoreGradeText) scoreGradeText.textContent = scoreData.grade;
+        if (scoreNumberText) scoreNumberText.textContent = `${scoreData.overallScore}/100`;
+        if (scoreStatusText) scoreStatusText.textContent = scoreData.statusText;
+        if (scoreSummaryDesc) scoreSummaryDesc.textContent = 'Multi-agent compound threat analysis completed.';
+
+        // Animate the SVG ring
+        if (scoreRingArc) {
+            const circumference = 2 * Math.PI * 34; // r=34
+            const offset = circumference - (scoreData.overallScore / 100) * circumference;
+            scoreRingArc.style.strokeDashoffset = offset;
+            // Color based on grade
+            const color = scoreData.overallScore >= 80 ? '#16a34a' : scoreData.overallScore >= 60 ? '#d97706' : '#dc2626';
+            scoreRingArc.style.stroke = color;
         }
 
         // Subscores
@@ -350,33 +430,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const overallScore = Math.max(0, Math.min(100, Math.round(100 - deductions)));
 
         let grade = 'F';
-        let gradeColor = '#ff3366';
+        let gradeColor = '#dc2626';
         let statusText = 'Severe Exploitable Threats';
 
         if (overallScore >= 97 && summary.critical === 0 && summary.high === 0) {
-            grade = 'A+';
-            gradeColor = '#00ff88';
-            statusText = 'Fortified & Hardened';
+            grade = 'A+'; gradeColor = '#16a34a'; statusText = 'Fortified & Hardened';
         } else if (overallScore >= 90 && summary.critical === 0 && summary.high === 0) {
-            grade = 'A';
-            gradeColor = '#00ff88';
-            statusText = 'Excellent Defense Posture';
+            grade = 'A'; gradeColor = '#16a34a'; statusText = 'Excellent Defense Posture';
         } else if (overallScore >= 80 && summary.critical === 0) {
-            grade = 'B';
-            gradeColor = '#00e5ff';
-            statusText = 'Good Security with Minor Gaps';
+            grade = 'B'; gradeColor = '#2563eb'; statusText = 'Good Security with Minor Gaps';
         } else if (overallScore >= 65) {
-            grade = 'C';
-            gradeColor = '#ffb700';
-            statusText = 'Moderate Risk Exposure';
+            grade = 'C'; gradeColor = '#d97706'; statusText = 'Moderate Risk Exposure';
         } else if (overallScore >= 50) {
-            grade = 'D';
-            gradeColor = '#ff8800';
-            statusText = 'High Vulnerability Risk';
+            grade = 'D'; gradeColor = '#d97706'; statusText = 'High Vulnerability Risk';
         } else {
-            grade = 'F';
-            gradeColor = '#ff3366';
-            statusText = 'Severe Exploitable Threats';
+            grade = 'F'; gradeColor = '#dc2626'; statusText = 'Severe Exploitable Threats';
         }
 
         const subCategories = {
@@ -4196,13 +4264,279 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
         }
     }
 
+
     // Initialize all new controllers
     window.authDrawer = new AuthDrawerController();
     window.cicdWebhook = new CicdWebhookManager();
     window.executiveReport = new ExecutiveReportManager();
     window.aiThreatMatrix = new AiThreatMatrixManager();
 
+    // ═══════════════════════════════════════════════════════
+    // CHATBOT CONTROLLER — Context-aware scan assistant
+    // ═══════════════════════════════════════════════════════
+    class ChatbotController {
+        constructor() {
+            this.messagesEl = document.getElementById('chatbot-messages');
+            this.inputEl = document.getElementById('chatbot-input');
+            this.sendBtn = document.getElementById('chatbot-send-btn');
+            this.suggestionsEl = document.getElementById('chat-suggestions');
+            this.scanData = null;
+
+            if (this.sendBtn) this.sendBtn.addEventListener('click', () => this.send());
+            if (this.inputEl) {
+                this.inputEl.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); }
+                });
+            }
+            if (this.suggestionsEl) {
+                this.suggestionsEl.querySelectorAll('.chat-suggestion-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        if (this.inputEl) this.inputEl.value = btn.dataset.q;
+                        this.send();
+                    });
+                });
+            }
+        }
+
+        onScanComplete(status) {
+            this.scanData = status;
+            const report = status.report || {};
+            const summary = report.summary || {};
+            const total = summary.total || 0;
+            const critical = summary.critical || 0;
+            const score = window.currentScoreData?.overallScore || '—';
+            const grade = window.currentScoreData?.grade || '—';
+            this.addMessage('bot',
+                `Scan complete! 🔍 Found ${total} findings (${critical} critical) on ${status.url}.\n\n` +
+                `Security grade: **${grade}** (${score}/100).\n\nAsk me anything — "what should I fix first?", "explain the XSS finding", or "how do I harden my headers?"`
+            );
+            // Update suggestions to scan-specific ones
+            if (this.suggestionsEl) {
+                this.suggestionsEl.innerHTML = [
+                    'What should I fix first?',
+                    'Explain the critical findings',
+                    'How do I fix missing CSP headers?',
+                    'What is my biggest risk?',
+                    'Generate a fix summary'
+                ].map(q => `<button type="button" class="chat-suggestion-btn" data-q="${q}">${q}</button>`).join('');
+                this.suggestionsEl.querySelectorAll('.chat-suggestion-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        if (this.inputEl) this.inputEl.value = btn.dataset.q;
+                        this.send();
+                    });
+                });
+            }
+        }
+
+        addMessage(role, text) {
+            if (!this.messagesEl) return;
+            const div = document.createElement('div');
+            div.className = `chat-msg ${role}`;
+            const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            div.innerHTML = `
+                <div class="chat-bubble">${text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</div>
+                <span class="chat-time">${now}</span>
+            `;
+            this.messagesEl.appendChild(div);
+            this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+        }
+
+        showTyping() {
+            if (!this.messagesEl) return null;
+            const div = document.createElement('div');
+            div.className = 'chat-msg bot';
+            div.id = 'chat-typing-indicator';
+            div.innerHTML = `<div class="chat-typing"><span></span><span></span><span></span></div>`;
+            this.messagesEl.appendChild(div);
+            this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+            return div;
+        }
+
+        answer(q) {
+            const query = q.toLowerCase();
+            const report = this.scanData?.report || {};
+            const findings = report.findings || [];
+            const summary = report.summary || {};
+            const score = window.currentScoreData?.overallScore;
+            const grade = window.currentScoreData?.grade;
+            const url = this.scanData?.url || 'the target';
+
+            // No scan yet
+            if (!this.scanData) {
+                const noScanAnswers = {
+                    'xss': 'XSS (Cross-Site Scripting) lets attackers inject malicious scripts into web pages. Fix: sanitize all user inputs, use Content Security Policy headers, encode output before rendering.',
+                    'sql': 'SQL Injection allows attackers to manipulate your database queries. Fix: use parameterized queries/prepared statements, never concatenate user input into SQL.',
+                    'cors': 'Misconfigured CORS can expose your API to unauthorized cross-origin requests. Fix: set specific allowed origins, never use wildcard (*) with credentials.',
+                    'csp': 'Content Security Policy (CSP) prevents XSS by restricting what resources can load. Fix: add `Content-Security-Policy` header with a strict policy.',
+                    'hsts': 'HTTP Strict Transport Security forces HTTPS connections. Fix: add `Strict-Transport-Security: max-age=31536000; includeSubDomains`.',
+                    'csrf': 'CSRF tricks authenticated users into submitting malicious requests. Fix: use CSRF tokens, SameSite cookie attribute, and verify Origin headers.',
+                    'prompt injection': 'Prompt injection manipulates AI models by embedding malicious instructions in user input. Fix: separate system prompts from user input, validate and sanitize AI inputs.',
+                    'ssrf': 'SSRF lets attackers make your server fetch internal resources. Fix: validate and allowlist URLs, block internal IP ranges, use a request proxy.'
+                };
+                for (const [keyword, ans] of Object.entries(noScanAnswers)) {
+                    if (query.includes(keyword)) return ans;
+                }
+                return "Run a scan first and I'll give you specific, context-aware answers about the findings! You can also ask me general security questions like \"what is XSS?\" or \"how do I fix CORS issues?\".";
+            }
+
+            // Score questions
+            if (query.includes('score') || query.includes('grade') || query.includes('rating')) {
+                return `Your security score is **${score}/100** — Grade **${grade}**.\n\n${window.currentScoreData?.statusText || ''}.\n\nBreakdown:\n• Headers: ${document.getElementById('subscore-val-headers')?.textContent || '—'}\n• AI Defense: ${document.getElementById('subscore-val-ai')?.textContent || '—'}\n• API/Auth: ${document.getElementById('subscore-val-api')?.textContent || '—'}\n• Logic: ${document.getElementById('subscore-val-logic')?.textContent || '—'}`;
+            }
+
+            // Fix first / priority
+            if (query.includes('first') || query.includes('priority') || query.includes('most important') || query.includes('what should')) {
+                const crits = findings.filter(f => f.severity === 'critical');
+                const highs = findings.filter(f => f.severity === 'high');
+                if (crits.length > 0) {
+                    return `Fix these **${crits.length} critical** findings first:\n\n${crits.slice(0, 3).map((f, i) => `${i + 1}. **${f.title}** — ${f.recommendation || f.description || 'See report for details'}`).join('\n\n')}${crits.length > 3 ? `\n\n...and ${crits.length - 3} more criticals.` : ''}`;
+                } else if (highs.length > 0) {
+                    return `No critical issues! Focus on these **${highs.length} high** severity findings:\n\n${highs.slice(0, 3).map((f, i) => `${i + 1}. **${f.title}**`).join('\n')}`;
+                } else {
+                    return `Great news — no critical or high severity issues! Your ${summary.medium || 0} medium and ${summary.low || 0} low findings are worth addressing over time.`;
+                }
+            }
+
+            // Critical findings
+            if (query.includes('critical')) {
+                const crits = findings.filter(f => f.severity === 'critical');
+                if (!crits.length) return `No critical vulnerabilities found on ${url}. ✅`;
+                return `Found **${crits.length} critical** vulnerabilities:\n\n${crits.map(f => `• **${f.title}** (${f.affectedSurface || f.url || ''})`).join('\n')}`;
+            }
+
+            // What vulnerabilities
+            if (query.includes('vulnerabilit') || query.includes('finding') || query.includes('issue') || query.includes('bug')) {
+                if (!findings.length) return `No vulnerabilities found on ${url}. The site appears clean!`;
+                return `Found **${summary.total}** total findings:\n• ${summary.critical || 0} Critical\n• ${summary.high || 0} High\n• ${summary.medium || 0} Medium\n• ${summary.low || 0} Low\n\nTop issues:\n${findings.slice(0, 4).map(f => `• **[${f.severity?.toUpperCase()}]** ${f.title}`).join('\n')}`;
+            }
+
+            // XSS
+            if (query.includes('xss') || query.includes('cross-site scripting')) {
+                const xss = findings.filter(f => (f.title || '').toLowerCase().includes('xss') || (f.title || '').toLowerCase().includes('cross-site'));
+                if (xss.length) return `Found **${xss.length} XSS** issues on ${url}. Fix: sanitize all user inputs server-side, set `Content-Security-Policy` headers, encode output before rendering to DOM.`;
+                return `No XSS issues detected on ${url}. ✅ Make sure to keep input sanitization in place.`;
+            }
+
+            // Headers / CSP / HSTS
+            if (query.includes('header') || query.includes('csp') || query.includes('hsts')) {
+                const hdrs = findings.filter(f => (f.title || '').toLowerCase().includes('header') || (f.title || '').toLowerCase().includes('csp'));
+                if (hdrs.length) return `Found **${hdrs.length}** header-related issues. Recommended headers to add:\n• `Content-Security-Policy`\n• `Strict-Transport-Security`\n• `X-Frame-Options: DENY`\n• `X-Content-Type-Options: nosniff``;
+                return 'All security headers look good! ✅';
+            }
+
+            // Summary
+            if (query.includes('summary') || query.includes('overview') || query.includes('tell me about') || query.includes('biggest risk')) {
+                const worst = findings.sort((a, b) => {
+                    const order = { critical: 4, high: 3, medium: 2, low: 1 };
+                    return (order[b.severity] || 0) - (order[a.severity] || 0);
+                })[0];
+                return `**Scan summary for ${url}:**\n\nScore: **${score}/100** (${grade})\n\nFindings: ${summary.critical || 0} critical, ${summary.high || 0} high, ${summary.medium || 0} medium, ${summary.low || 0} low.\n\nBiggest risk: **${worst?.title || 'None found'}** — ${worst?.recommendation || worst?.description || ''}.`;
+            }
+
+            // Generic fallback
+            return `I found **${summary.total || 0}** issues on ${url} (score: ${score}/100). Try asking me:\n• "What are the critical issues?"\n• "What should I fix first?"\n• "How do I fix XSS?"\n• "Explain my security score"`;
+        }
+
+        async send() {
+            if (!this.inputEl) return;
+            const text = this.inputEl.value.trim();
+            if (!text) return;
+            this.inputEl.value = '';
+            this.addMessage('user', text);
+            const typing = this.showTyping();
+            await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
+            if (typing) typing.remove();
+            const response = this.answer(text);
+            this.addMessage('bot', response);
+        }
+    }
+
+    window.chatbotController = new ChatbotController();
+
+    // ═══════════════════════════════════════════════════════
+    // API KEY MANAGEMENT
+    // ═══════════════════════════════════════════════════════
+    let apiKeyRevealed = false;
+    let cachedApiKey = null;
+
+    async function loadApiKey() {
+        const display = document.getElementById('api-key-display-text');
+        if (!display) return;
+        try {
+            const res = await fetch('/api/key');
+            if (res.ok) {
+                const data = await res.json();
+                cachedApiKey = data.key;
+                display.textContent = data.key;
+                display.classList.remove('revealed');
+                apiKeyRevealed = false;
+                const revealBtn = document.getElementById('reveal-api-key-btn');
+                if (revealBtn) revealBtn.textContent = 'Reveal';
+            } else {
+                display.textContent = 'Could not load key';
+            }
+        } catch (e) {
+            display.textContent = 'Server unavailable';
+        }
+    }
+
+    const revealBtn = document.getElementById('reveal-api-key-btn');
+    if (revealBtn) {
+        revealBtn.addEventListener('click', () => {
+            const display = document.getElementById('api-key-display-text');
+            if (!display) return;
+            apiKeyRevealed = !apiKeyRevealed;
+            display.classList.toggle('revealed', apiKeyRevealed);
+            revealBtn.textContent = apiKeyRevealed ? 'Hide' : 'Reveal';
+        });
+    }
+
+    const copyApiKeyBtn = document.getElementById('copy-api-key-btn');
+    if (copyApiKeyBtn) {
+        copyApiKeyBtn.addEventListener('click', async () => {
+            if (!cachedApiKey) return;
+            try {
+                await navigator.clipboard.writeText(cachedApiKey);
+                copyApiKeyBtn.textContent = 'Copied!';
+                setTimeout(() => { copyApiKeyBtn.textContent = 'Copy'; }, 2000);
+                showToast('API key copied to clipboard', 'success');
+            } catch (e) { showToast('Failed to copy', 'error'); }
+        });
+    }
+
+    const regenApiKeyBtn = document.getElementById('regen-api-key-btn');
+    if (regenApiKeyBtn) {
+        regenApiKeyBtn.addEventListener('click', async () => {
+            if (!confirm('Regenerate the API key? All existing CI/CD integrations using the old key will stop working.')) return;
+            try {
+                const res = await fetch('/api/key/regenerate', { method: 'POST' });
+                if (res.ok) {
+                    await loadApiKey();
+                    showToast('API key regenerated. Update your CI/CD secrets!', 'warn');
+                }
+            } catch (e) { showToast('Failed to regenerate key', 'error'); }
+        });
+    }
+
+    // Results terminal toggle
+    const toggleResultsTerminalBtn = document.getElementById('toggle-results-terminal-btn');
+    const resultsTerminalDrawer = document.getElementById('results-terminal-drawer');
+    if (toggleResultsTerminalBtn && resultsTerminalDrawer) {
+        toggleResultsTerminalBtn.addEventListener('click', () => {
+            const hidden = resultsTerminalDrawer.classList.toggle('hidden');
+            toggleResultsTerminalBtn.textContent = hidden ? 'View Logs' : 'Hide Logs';
+        });
+    }
+    const resultsTerminalCloseBtn = document.getElementById('results-terminal-close-btn');
+    if (resultsTerminalCloseBtn && resultsTerminalDrawer) {
+        resultsTerminalCloseBtn.addEventListener('click', () => {
+            resultsTerminalDrawer.classList.add('hidden');
+            if (toggleResultsTerminalBtn) toggleResultsTerminalBtn.textContent = 'View Logs';
+        });
+    }
+
     function escapeHtml(str) {
         return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 });
+

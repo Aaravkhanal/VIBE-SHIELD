@@ -18,6 +18,30 @@ const REPORTS_DIR = path.join(ROOT_DIR, 'vibe-shield-reports');
 
 const PORT = process.env.PORT || 3000;
 
+// ─── API Key Management ───────────────────────────────────────────────────
+const DATA_DIR = path.join(ROOT_DIR, 'data');
+const API_KEY_FILE = path.join(DATA_DIR, 'api-key.json');
+
+function ensureApiKey() {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(API_KEY_FILE)) {
+        const key = 'vs_' + nanoid(40);
+        fs.writeFileSync(API_KEY_FILE, JSON.stringify({ key, createdAt: new Date().toISOString() }));
+        console.log(`\n🔑 VIBE SHIELD API Key generated. Manage it in Settings.`);
+        return key;
+    }
+    return JSON.parse(fs.readFileSync(API_KEY_FILE, 'utf8')).key;
+}
+
+let VIBE_API_KEY = ensureApiKey();
+
+function regenerateApiKey() {
+    VIBE_API_KEY = 'vs_' + nanoid(40);
+    fs.writeFileSync(API_KEY_FILE, JSON.stringify({ key: VIBE_API_KEY, createdAt: new Date().toISOString() }));
+    return VIBE_API_KEY;
+}
+// ─────────────────────────────────────────────────────────────────────────
+
 // In-memory store for scans
 const activeScans = new Map();
 const scanHistory = [];
@@ -1061,9 +1085,25 @@ jobs:
         return;
     }
 
+    // ── GET /api/key — return current API key ──────────────────────────────
+    if (req.method === 'GET' && pathname === '/api/key') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ key: VIBE_API_KEY }));
+        return;
+    }
+
+    // ── POST /api/key/regenerate ───────────────────────────────────────────
+    if (req.method === 'POST' && pathname === '/api/key/regenerate') {
+        const newKey = regenerateApiKey();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ key: newKey }));
+        return;
+    }
+
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('404 Not Found');
 });
+
 
 function stripAnsi(str) {
     return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
