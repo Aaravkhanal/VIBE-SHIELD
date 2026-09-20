@@ -3704,16 +3704,33 @@ ${currentWafBundle.artifacts.docker || ''}
 
             if (this.currentTab === 'github') {
                 this.filePath.textContent = '📁 .github/workflows/vibe-shield-security-gate.yml';
-                this.fileDesc.textContent = 'Continuous security scan on GitHub Push / Pull Request with gate enforcement';
-                this.codeContent.textContent = `name: 🛡️ VIBE SHIELD Continuous Security Gate
+                this.fileDesc.textContent = 'On-demand scan of ANY website via workflow_dispatch + auto-scan your own app on push/PR';
+                this.codeContent.textContent = `name: 🛡️ VIBE SHIELD Security Gate
 
 on:
+  # ── Manual / On-Demand: scan ANY website you have permission to test ──
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target URL to scan (e.g. https://example.com)'
+        required: true
+        default: 'https://staging.your-app.com'
+        type: string
+      bearer_token:
+        description: 'Bearer token for authenticated scan (optional)'
+        required: false
+        default: ''
+        type: string
+
+  # ── Auto-scan YOUR OWN app on every push / PR ──
   push:
     branches: [ main, staging, dev ]
   pull_request:
     branches: [ main ]
+
+  # ── Nightly continuous audit at 2:00 AM UTC ──
   schedule:
-    - cron: '0 2 * * *' # Nightly continuous audit at 2:00 AM UTC
+    - cron: '0 2 * * *'
 
 jobs:
   vibe-shield-audit:
@@ -3723,49 +3740,70 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Resolve Target URL
+        id: resolve_target
+        run: |
+          # workflow_dispatch sets inputs.target_url
+          # push/PR/schedule falls back to the STAGING_URL secret (your own app)
+          TARGET="\${{ github.event.inputs.target_url }}"
+          if [ -z "$TARGET" ]; then
+            TARGET="\${{ secrets.STAGING_URL }}"
+          fi
+          echo "target=$TARGET" >> $GITHUB_OUTPUT
+          echo "Scanning: $TARGET"
+
       - name: Run VIBE SHIELD Security Gate
         id: security_scan
         run: |
           echo "🚀 Dispatching VIBE SHIELD multi-agent security audit..."
-          
-          RESPONSE=$(curl -s -X POST "${serverUrl}/api/webhook/scan" \\
+
+          BEARER="\${{ github.event.inputs.bearer_token }}"
+          if [ -z "$BEARER" ]; then
+            BEARER="\${{ secrets.STAGING_BEARER_TOKEN }}"
+          fi
+
+          RESPONSE=$(curl -s -X POST "\${{ secrets.VIBESHIELD_URL }}/api/webhook/scan" \\
             -H "Content-Type: application/json" \\
-            -d '{
-              "targetUrl": "\${{ secrets.APP_TARGET_URL || '${targetUrl}' }}",
-              "modules": ["qa", "security", "ai", "logic", "api"],
-              "securityGate": {
-                "minScore": ${gate.minScore},
-                "maxCritical": ${gate.maxCritical},
-                "maxHigh": ${gate.maxHigh}
+            -H "x-api-key: \${{ secrets.VIBESHIELD_API_KEY }}" \\
+            -d "{
+              \\"targetUrl\\": \\"\${{ steps.resolve_target.outputs.target }}\\",
+              \\"modules\\": [\\"qa\\", \\"security\\", \\"ai\\", \\"logic\\", \\"api\\"],
+              \\"securityGate\\": {
+                \\"minScore\\": ${gate.minScore},
+                \\"maxCritical\\": ${gate.maxCritical},
+                \\"maxHigh\\": ${gate.maxHigh}
               },
-              "auth": {
-                "bearerToken": "\${{ secrets.STAGING_BEARER_TOKEN }}"
+              \\"auth\\": {
+                \\"bearerToken\\": \\"$BEARER\\"
               }
-            }')
-          
+            }")
+
           echo "$RESPONSE" | jq .
-          
+
           PASSED=$(echo "$RESPONSE" | jq -r '.gate.passed')
           SCORE=$(echo "$RESPONSE" | jq -r '.posture.score')
           GRADE=$(echo "$RESPONSE" | jq -r '.posture.grade')
-          
+
           echo "======================================"
           echo "🛡️ VIBE SHIELD AUDIT SUMMARY"
+          echo "Target: \${{ steps.resolve_target.outputs.target }}"
           echo "Grade: $GRADE | Score: $SCORE/100"
           echo "Gate Passed: $PASSED"
           echo "======================================"
-          
+
           if [ "$PASSED" != "true" ]; then
-            echo "❌ CI/CD Security Gate Failed! Posture score or critical findings violated thresholds."
+            echo "❌ Security Gate FAILED — thresholds violated."
             exit 1
           fi
-          
+
           echo "✔ Security Gate PASSED! Safe to merge."`;
             } else if (this.currentTab === 'curl') {
                 this.filePath.textContent = '⚡ Webhook HTTP Request (cURL)';
-                this.fileDesc.textContent = 'Trigger continuous scan via direct HTTP POST webhook from any CI server or cron job';
-                this.codeContent.textContent = `curl -X POST "${serverUrl}/api/webhook/scan" \\
+                this.fileDesc.textContent = 'Scan any URL on demand — just swap the targetUrl each time';
+                this.codeContent.textContent = `# Scan ANY website you have permission to test — just change targetUrl:
+curl -X POST "${serverUrl}/api/webhook/scan" \\
   -H "Content-Type: application/json" \\
+  -H "x-api-key: YOUR_VIBESHIELD_API_KEY" \\
   -d '{
     "targetUrl": "${targetUrl}",
     "modules": ["qa", "security", "ai", "logic", "api"],
@@ -3775,68 +3813,98 @@ jobs:
       "maxHigh": ${gate.maxHigh}
     },
     "auth": {
-      "role": "admin"
+      "bearerToken": ""
     }
   }'`;
             } else if (this.currentTab === 'gitlab') {
                 this.filePath.textContent = '📁 .gitlab-ci.yml';
-                this.fileDesc.textContent = 'GitLab CI security gate test stage';
+                this.fileDesc.textContent = 'GitLab CI: scan any URL via pipeline variable $TARGET_URL or fall back to $CI_ENVIRONMENT_URL';
                 this.codeContent.textContent = `stages:
   - test
   - security
 
+# ── Usage: Pass TARGET_URL as a pipeline variable to scan any site ──
+# e.g. in GitLab UI: Run Pipeline → Add variable TARGET_URL=https://any-site.com
+# Falls back to CI_ENVIRONMENT_URL (your own deployed app) automatically.
+
 vibe_shield_security_gate:
   stage: security
   image: curlimages/curl:latest
+  variables:
+    # Override this per-pipeline run to scan any site you have permission for:
+    TARGET_URL: "\${CI_ENVIRONMENT_URL:-${targetUrl}}"
   script:
     - |
-      echo "Triggering VIBE SHIELD pipeline scan..."
-      RESPONSE=$(curl -s -X POST "${serverUrl}/api/webhook/scan" \\
+      echo "🛡️ VIBE SHIELD — Scanning: $TARGET_URL"
+      RESPONSE=$(curl -s -X POST "$VIBESHIELD_URL/api/webhook/scan" \\
         -H "Content-Type: application/json" \\
-        -d '{
-          "targetUrl": "'\${CI_ENVIRONMENT_URL:-"${targetUrl}"}'",
-          "securityGate": { "minScore": ${gate.minScore}, "maxCritical": ${gate.maxCritical} }
-        }')
+        -H "x-api-key: $VIBESHIELD_API_KEY" \\
+        -d "{
+          \\"targetUrl\\": \\"$TARGET_URL\\",
+          \\"securityGate\\": { \\"minScore\\": ${gate.minScore}, \\"maxCritical\\": ${gate.maxCritical}, \\"maxHigh\\": ${gate.maxHigh} }
+        }")
       echo "$RESPONSE"
       PASSED=$(echo "$RESPONSE" | grep -o '"passed":true' || true)
       if [ -z "$PASSED" ]; then
-        echo "Security gate failed!"
+        echo "❌ Security gate failed!"
         exit 1
       fi
+      echo "✔ Security gate passed!"
   only:
     - merge_requests
     - main`;
+
+            // Required GitLab CI/CD Variables (set under Settings → CI/CD → Variables):
+            // VIBESHIELD_URL       → URL of your VIBE SHIELD server
+            // VIBESHIELD_API_KEY   → Your VIBE SHIELD API key
+            // TARGET_URL (optional)→ Override here OR pass per-pipeline run
             } else if (this.currentTab === 'nodejs') {
                 this.filePath.textContent = '📁 scripts/vibe-shield-ci.js';
-                this.fileDesc.textContent = 'Node.js standalone CI security gate runner script';
+                this.fileDesc.textContent = 'Node.js runner — pass TARGET_URL as env var to scan any site on demand';
                 this.codeContent.textContent = `// scripts/vibe-shield-ci.js
+// Usage: TARGET_URL=https://any-site.com node scripts/vibe-shield-ci.js
 import fetch from 'node-fetch';
 
 async function runSecurityGate() {
-  console.log('🛡️ Triggering VIBE SHIELD Continuous Security Scan...');
-  
-  const res = await fetch('${serverUrl}/api/webhook/scan', {
+  // TARGET_URL passed at runtime — scan any site you have permission for
+  const targetUrl = process.env.TARGET_URL;
+  if (!targetUrl) {
+    console.error('❌ Missing TARGET_URL environment variable.');
+    console.error('   Usage: TARGET_URL=https://example.com node scripts/vibe-shield-ci.js');
+    process.exit(1);
+  }
+
+  console.log('🛡️ VIBE SHIELD — Scanning:', targetUrl);
+
+  const res = await fetch(process.env.VIBESHIELD_URL + '/api/webhook/scan', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.VIBESHIELD_API_KEY || ''
+    },
     body: JSON.stringify({
-      targetUrl: process.env.APP_TARGET_URL || '${targetUrl}',
+      targetUrl,
       modules: ['qa', 'security', 'ai', 'logic', 'api'],
       securityGate: {
         minScore: ${gate.minScore},
         maxCritical: ${gate.maxCritical},
         maxHigh: ${gate.maxHigh}
+      },
+      // Optional: pass bearer token for authenticated scans
+      auth: {
+        bearerToken: process.env.BEARER_TOKEN || ''
       }
     })
   });
 
   const data = await res.json();
   console.log('Posture:', data.posture?.grade, data.posture?.score + '/100');
-  
+
   if (!data.gate?.passed) {
     console.error('❌ Security Gate Violations:', data.gate?.violations);
     process.exit(1);
   }
-  
+
   console.log('✔ Security Gate Passed! Report URL:', data.reportHtmlUrl);
 }
 
