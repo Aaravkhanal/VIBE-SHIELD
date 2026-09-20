@@ -1210,26 +1210,44 @@ jobs:
                     }
                 }
 
-                // 3. Built-in Local Security Intelligence Engine (Zero API Key Fallback)
+                // 3. Built-in Local Security Intelligence Engine (Comprehensive Expert Security Advisor)
                 let responseText = '';
                 const q = prompt.toLowerCase();
                 const findings = scanContext?.findings || [];
                 const summary = scanContext?.dedupSummary || scanContext?.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
                 const targetUrl = scanContext?.meta?.target || 'the website';
+                const score = scanContext?.score ?? (summary.critical > 0 ? 45 : summary.high > 0 ? 68 : 88);
 
-                if (q.includes('score') || q.includes('grade') || q.includes('rating')) {
-                    responseText = `Target **${targetUrl}** has a Security Score of **${scanContext?.score || 85}/100**.\n\nSummary:\n• Critical: ${summary.critical}\n• High: ${summary.high}\n• Medium: ${summary.medium}\n• Low: ${summary.low}\n\nTop priority: Address critical and high-severity issues first.`;
-                } else if (q.includes('critical') || q.includes('fix first') || q.includes('priority')) {
-                    const crits = findings.filter(f => f.severity === 'critical');
-                    if (crits.length > 0) {
-                        responseText = `Fix these **${crits.length} critical** findings immediately:\n\n${crits.map((f, i) => `${i + 1}. **${f.title}** (${f.affectedSurface || f.url || ''})\n   Recommendation: ${f.recommendation || 'Apply input sanitization and secure header controls.'}`).join('\n\n')}`;
+                // Top findings grouped by severity
+                const crits = findings.filter(f => f.severity === 'critical');
+                const highs = findings.filter(f => f.severity === 'high');
+                const meds = findings.filter(f => f.severity === 'medium');
+
+                if (q.includes('suggest') || q.includes('recommend') || q.includes('improvement') || q.includes('what to do') || q.includes('how to improve')) {
+                    const topItems = [...crits, ...highs, ...meds].slice(0, 4);
+                    if (topItems.length > 0) {
+                        responseText = `🛡️ **Security Hardening Roadmap for ${targetUrl}:**\n\n` +
+                            topItems.map((f, i) => `**${i + 1}. Fix ${f.title}** (${f.severity?.toUpperCase()})\n• **Impact**: ${f.description || 'Presents security vulnerability to web application.'}\n• **Action Required**: ${f.recommendation || f.remediation || 'Apply input validation and secure headers.'}`).join('\n\n') +
+                            `\n\n📌 **General Best Practice Advice:**\n• Enforce strict Content Security Policy (\`Content-Security-Policy\`)\n• Set \`Strict-Transport-Security: max-age=31536000\`\n• Enable \`SameSite=Lax\` and \`HttpOnly\` flags on all cookies.`;
                     } else {
-                        responseText = `No critical vulnerabilities detected on ${targetUrl}! ✅ Focus on the high and medium findings in your report.`;
+                        responseText = `🛡️ **Security Hardening Recommendations for ${targetUrl}:**\n\nEven with 0 critical findings, no web application is 100% secure! Here are top proactive improvements:\n\n1. **Implement Content Security Policy (CSP)** — Prevent XSS & unauthorized script execution.\n2. **HSTS & TLS Hardening** — Force HTTPS with \`Strict-Transport-Security\` header.\n3. **Cookie Flag Audit** — Ensure all session cookies use \`Secure; HttpOnly; SameSite=Strict\`.\n4. **Security Headers** — Add \`X-Frame-Options: DENY\` and \`X-Content-Type-Options: nosniff\`.`;
                     }
-                } else if (q.includes('xss') || q.includes('scripting')) {
-                    responseText = `To prevent XSS (Cross-Site Scripting):\n1. Sanitize all user inputs server-side\n2. Encode HTML output before rendering into the DOM\n3. Set strict \`Content-Security-Policy\` headers\n4. Use \`HttpOnly\` and \`SameSite=Lax/Strict\` flags on all session cookies.`;
+                } else if (q.includes('score') || q.includes('grade') || q.includes('rating')) {
+                    responseText = `📊 **Security Posture Analysis for ${targetUrl}:**\n\nSecurity Score: **${score}/100**\n\n**Findings Breakdown:**\n• 🔴 Critical: ${summary.critical}\n• 🟠 High: ${summary.high}\n• 🟡 Medium: ${summary.medium}\n• 🔵 Low: ${summary.low}\n• Total Issues: ${summary.total}\n\n${summary.critical > 0 ? '⚠️ **Action Urgency**: High. Address critical findings immediately to block potential automated exploits.' : '✅ No critical findings detected. Focus on high and medium findings next.'}`;
+                } else if (q.includes('critical') || q.includes('fix first') || q.includes('priority')) {
+                    if (crits.length > 0) {
+                        responseText = `🚨 **Priority 1 Fixes (${crits.length} Critical Issues):**\n\n${crits.map((f, i) => `${i + 1}. **${f.title}**\n   • Affected Surface: \`${f.affectedSurface || f.url || targetUrl}\`\n   • Fix: ${f.recommendation || 'Apply server-side input sanitization.'}`).join('\n\n')}`;
+                    } else if (highs.length > 0) {
+                        responseText = `⚠️ **No Critical Issues! Priority Focus (${highs.length} High Severity Issues):**\n\n${highs.slice(0, 3).map((f, i) => `${i + 1}. **${f.title}**\n   • Affected: \`${f.affectedSurface || targetUrl}\`\n   • Fix: ${f.recommendation || 'Enforce defense in depth controls.'}`).join('\n\n')}`;
+                    } else {
+                        responseText = `✅ **Great posture!** No critical or high severity issues found on **${targetUrl}**. Focus on resolving the ${summary.medium || 0} medium findings to further harden your application.`;
+                    }
+                } else if (q.includes('detail') || q.includes('full') || q.includes('audit') || q.includes('report') || q.includes('all')) {
+                    responseText = `🔍 **Detailed Security Audit Summary for ${targetUrl}:**\n\n• **Target URL**: ${targetUrl}\n• **Total Vulnerabilities**: ${summary.total} findings\n• **Highest Severity**: ${crits.length ? 'Critical' : highs.length ? 'High' : meds.length ? 'Medium' : 'Low'}\n\n**Top Vulnerability Insights:**\n` +
+                        findings.slice(0, 5).map(f => `• **[${f.severity?.toUpperCase()}]** ${f.title} — ${f.affectedSurface || f.url || ''}`).join('\n') +
+                        `\n\n💡 *Click "Open Full Report ↗" or "Download JSON ⤓" in the top bar to inspect every single vulnerability trace and dynamic proof-of-concept payload.*`;
                 } else {
-                    responseText = `Analyzed **${targetUrl}** (${summary.total} findings total: ${summary.critical} critical, ${summary.high} high, ${summary.medium} medium).\n\nYou can ask:\n• "What are the critical vulnerabilities?"\n• "How do I fix XSS?"\n• "What should I prioritize fixing first?"\n• "Explain my security score"`;
+                    responseText = `🤖 **VIBE SHIELD Security Assistant for ${targetUrl}:**\n\nI have analyzed **${targetUrl}** (${summary.total} total findings, score: ${score}/100).\n\nAsk me anything:\n• *"Give me suggestions to improve my score"* \n• *"What should I fix first?"*\n• *"Show detailed audit findings"*\n• *"How do I harden security headers?"*`;
                 }
 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
