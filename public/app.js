@@ -560,6 +560,19 @@ document.addEventListener('DOMContentLoaded', () => {
             viewReportBtn.onclick = () => window.open(activeReportPath, '_blank');
         }
 
+        const downloadJsonBtn = document.getElementById('download-json-report-btn');
+        if (downloadJsonBtn) {
+            downloadJsonBtn.onclick = () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(report, null, 2));
+                const downloadAnchor = document.createElement('a');
+                downloadAnchor.setAttribute("href", dataStr);
+                downloadAnchor.setAttribute("download", `vibe-shield-audit-${scanId || 'report'}.json`);
+                document.body.appendChild(downloadAnchor);
+                downloadAnchor.click();
+                downloadAnchor.remove();
+            };
+        }
+
         // Set up results terminal logs
         const resultsScanIdSpan = document.getElementById('results-terminal-scan-id');
         if (resultsScanIdSpan) {
