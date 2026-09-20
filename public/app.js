@@ -4414,14 +4414,14 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
             // XSS
             if (query.includes('xss') || query.includes('cross-site scripting')) {
                 const xss = findings.filter(f => (f.title || '').toLowerCase().includes('xss') || (f.title || '').toLowerCase().includes('cross-site'));
-                if (xss.length) return `Found **${xss.length} XSS** issues on ${url}. Fix: sanitize all user inputs server-side, set `Content-Security-Policy` headers, encode output before rendering to DOM.`;
+                if (xss.length) return `Found **${xss.length} XSS** issues on ${url}. Fix: sanitize all user inputs server-side, set Content-Security-Policy headers, encode output before rendering to DOM.`;
                 return `No XSS issues detected on ${url}. ✅ Make sure to keep input sanitization in place.`;
             }
 
             // Headers / CSP / HSTS
             if (query.includes('header') || query.includes('csp') || query.includes('hsts')) {
                 const hdrs = findings.filter(f => (f.title || '').toLowerCase().includes('header') || (f.title || '').toLowerCase().includes('csp'));
-                if (hdrs.length) return `Found **${hdrs.length}** header-related issues. Recommended headers to add:\n• `Content-Security-Policy`\n• `Strict-Transport-Security`\n• `X-Frame-Options: DENY`\n• `X-Content-Type-Options: nosniff``;
+                if (hdrs.length) return `Found **${hdrs.length}** header-related issues. Recommended headers to add:\n• Content-Security-Policy\n• Strict-Transport-Security\n• X-Frame-Options: DENY\n• X-Content-Type-Options: nosniff`;
                 return 'All security headers look good! ✅';
             }
 
@@ -4577,27 +4577,6 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
                 }
             } catch (e) { showToast('Failed to regenerate key', 'error'); }
         });
-    }
-
-    // Results terminal toggle
-    const toggleResultsTerminalBtn = document.getElementById('toggle-results-terminal-btn');
-    const resultsTerminalDrawer = document.getElementById('results-terminal-drawer');
-    if (toggleResultsTerminalBtn && resultsTerminalDrawer) {
-        toggleResultsTerminalBtn.addEventListener('click', () => {
-            const hidden = resultsTerminalDrawer.classList.toggle('hidden');
-            toggleResultsTerminalBtn.textContent = hidden ? 'View Logs' : 'Hide Logs';
-        });
-    }
-    const resultsTerminalCloseBtn = document.getElementById('results-terminal-close-btn');
-    if (resultsTerminalCloseBtn && resultsTerminalDrawer) {
-        resultsTerminalCloseBtn.addEventListener('click', () => {
-            resultsTerminalDrawer.classList.add('hidden');
-            if (toggleResultsTerminalBtn) toggleResultsTerminalBtn.textContent = 'View Logs';
-        });
-    }
-
-    function escapeHtml(str) {
-        return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 });
 
