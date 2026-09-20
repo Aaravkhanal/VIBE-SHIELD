@@ -193,7 +193,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             stopTimer();
             startBtn.disabled = false;
-            startBtn.querySelector('.btn-text').textContent = 'Start Autonomous Scan';
+            startBtn.textContent = 'Scan →';
+            startBtn.classList.remove('scanning');
             showToast('⚠️ Scan connection timed out after 10 minutes.', 'error');
         }, 600000);
 
