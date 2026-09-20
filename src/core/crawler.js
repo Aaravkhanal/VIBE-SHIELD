@@ -290,10 +290,18 @@ export class Crawler {
 
         try {
             const startTime = Date.now();
-            const response = await page.goto(url, {
-                waitUntil: 'networkidle',
-                timeout: this.timeout,
-            });
+            let response;
+            try {
+                response = await page.goto(url, {
+                    waitUntil: 'domcontentloaded',
+                    timeout: this.timeout,
+                });
+                // Small sleep to allow React/Next.js/Vue client-side rendering & JS hydration
+                await page.waitForTimeout(1000);
+            } catch (navErr) {
+                // Retry with load if domcontentloaded failed
+                response = await page.goto(url, { waitUntil: 'load', timeout: 15000 });
+            }
             pageData.loadTime = Date.now() - startTime;
             pageData.status = response?.status() || null;
             pageData.title = await page.title();
