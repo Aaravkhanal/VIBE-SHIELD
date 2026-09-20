@@ -535,7 +535,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function displayResults(status) {
-        resultsSection.classList.remove('hidden');
+        if (progressSection) progressSection.classList.add('hidden');
+        if (resultsSection) resultsSection.classList.remove('hidden');
+        const heroSection = document.getElementById('hero-section');
+        if (heroSection) heroSection.classList.add('scanned-compact');
         const report = status.report || {};
         const summary = report.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
         const scanId = status.scanId || currentScanId;
@@ -4577,6 +4580,10 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
                 }
             } catch (e) { showToast('Failed to regenerate key', 'error'); }
         });
+    }
+
+    function escapeHtml(str) {
+        return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 });
 
