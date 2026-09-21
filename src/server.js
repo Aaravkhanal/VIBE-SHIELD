@@ -46,7 +46,11 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 function getSettings() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     if (!fs.existsSync(SETTINGS_FILE)) {
-        const defaults = { geminiApiKey: process.env.GEMINI_API_KEY || '', openaiApiKey: process.env.OPENAI_API_KEY || '' };
+        const defaults = {
+            geminiApiKey: process.env.GEMINI_API_KEY || '',
+            openaiApiKey: process.env.OPENAI_API_KEY || '',
+            nvidiaApiKey: process.env.NVIDIA_API_KEY || ''
+        };
         fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaults, null, 2));
         return defaults;
     }
@@ -1122,7 +1126,9 @@ jobs:
             geminiApiKey: settings.geminiApiKey ? '••••••••' + settings.geminiApiKey.slice(-4) : '',
             hasGeminiKey: Boolean(settings.geminiApiKey || process.env.GEMINI_API_KEY),
             openaiApiKey: settings.openaiApiKey ? '••••••••' + settings.openaiApiKey.slice(-4) : '',
-            hasOpenaiKey: Boolean(settings.openaiApiKey || process.env.OPENAI_API_KEY)
+            hasOpenaiKey: Boolean(settings.openaiApiKey || process.env.OPENAI_API_KEY),
+            nvidiaApiKey: settings.nvidiaApiKey ? '••••••••' + settings.nvidiaApiKey.slice(-4) : '',
+            hasNvidiaKey: Boolean(settings.nvidiaApiKey || process.env.NVIDIA_API_KEY)
         };
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(masked));
@@ -1155,10 +1161,43 @@ jobs:
             try {
                 const { prompt, scanId, report } = JSON.parse(body);
                 const settings = getSettings();
+                const nvidiaKey = settings.nvidiaApiKey || process.env.NVIDIA_API_KEY;
                 const geminiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
                 const openaiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY;
 
                 const scanContext = report || (scanId ? activeScans.get(scanId)?.report : null);
+
+                // 1. If NVIDIA API key is configured, call NVIDIA NIM API (Llama-3.1 70B / Nemotron)
+                if (nvidiaKey) {
+                    try {
+                        const systemInstruction = `You are VIBE SHIELD AI Security Assistant, a Principal Application Security Engineer & QA Lead powered by NVIDIA AI. Answer user queries concisely, authoritatively, and accurately based on their live security scan data.\n\nCurrent Audit Context:\nTarget: ${scanContext?.meta?.target || 'Not specified'}\nScore: ${scanContext?.score || 'N/A'}/100\nTotal Findings: ${scanContext?.dedupSummary?.total || scanContext?.summary?.total || 0} (${scanContext?.dedupSummary?.critical || 0} critical, ${scanContext?.dedupSummary?.high || 0} high)\nTop Findings: ${JSON.stringify((scanContext?.findings || []).slice(0, 5).map(f => ({ title: f.title, severity: f.severity, surface: f.affectedSurface })))}`;
+
+                        const nvRes = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${nvidiaKey}`
+                            },
+                            body: JSON.stringify({
+                                model: 'meta/llama-3.1-70b-instruct',
+                                messages: [
+                                    { role: 'system', content: systemInstruction },
+                                    { role: 'user', content: prompt }
+                                ],
+                                temperature: 0.2,
+                                max_tokens: 1024
+                            })
+                        });
+                        const nvData = await nvRes.json();
+                        const answerText = nvData?.choices?.[0]?.message?.content;
+                        if (answerText) {
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            return res.end(JSON.stringify({ response: answerText, provider: 'nvidia' }));
+                        }
+                    } catch (e) {
+                        console.error('NVIDIA API Error:', e.message);
+                    }
+                }
 
                 // 1. If Gemini API key is configured, call Gemini API
                 if (geminiKey) {

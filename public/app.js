@@ -4501,8 +4501,10 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
             const res = await fetch('/api/settings');
             if (res.ok) {
                 const s = await res.json();
+                const nInput = document.getElementById('nvidia-api-key-input');
                 const gInput = document.getElementById('gemini-api-key-input');
                 const oInput = document.getElementById('openai-api-key-input');
+                if (nInput && s.nvidiaApiKey) nInput.placeholder = s.nvidiaApiKey;
                 if (gInput && s.geminiApiKey) gInput.placeholder = s.geminiApiKey;
                 if (oInput && s.openaiApiKey) oInput.placeholder = s.openaiApiKey;
             }
@@ -4534,9 +4536,11 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
     const saveLlmBtn = document.getElementById('save-llm-settings-btn');
     if (saveLlmBtn) {
         saveLlmBtn.addEventListener('click', async () => {
+            const nvidiaVal = document.getElementById('nvidia-api-key-input')?.value.trim();
             const geminiVal = document.getElementById('gemini-api-key-input')?.value.trim();
             const openaiVal = document.getElementById('openai-api-key-input')?.value.trim();
             const payload = {};
+            if (nvidiaVal) payload.nvidiaApiKey = nvidiaVal;
             if (geminiVal) payload.geminiApiKey = geminiVal;
             if (openaiVal) payload.openaiApiKey = openaiVal;
             try {
