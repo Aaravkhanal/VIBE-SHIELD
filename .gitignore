@@ -2,6 +2,7 @@ node_modules/
 vibe-shield-reports/
 latest-report.json
 dist/
+data/
 .env
 *.log
 vibe-shield.config.json

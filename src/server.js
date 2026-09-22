@@ -1170,7 +1170,12 @@ jobs:
                 // 1. If NVIDIA API key is configured, call NVIDIA NIM API (Llama-3.1 70B / Nemotron)
                 if (nvidiaKey) {
                     try {
-                        const systemInstruction = `You are VIBE SHIELD AI Security Assistant, a Principal Application Security Engineer & QA Lead powered by NVIDIA AI. Answer user queries concisely, authoritatively, and accurately based on their live security scan data.\n\nCurrent Audit Context:\nTarget: ${scanContext?.meta?.target || 'Not specified'}\nScore: ${scanContext?.score || 'N/A'}/100\nTotal Findings: ${scanContext?.dedupSummary?.total || scanContext?.summary?.total || 0} (${scanContext?.dedupSummary?.critical || 0} critical, ${scanContext?.dedupSummary?.high || 0} high)\nTop Findings: ${JSON.stringify((scanContext?.findings || []).slice(0, 5).map(f => ({ title: f.title, severity: f.severity, surface: f.affectedSurface })))}`;
+                        const targetUrl = scanContext?.meta?.target || 'the scanned site';
+                        const score = scanContext?.score || scanContext?.report?.score || 'N/A';
+                        const dedup = scanContext?.dedupSummary || scanContext?.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
+                        const findingsList = (scanContext?.findings || []).map((f, i) => `${i + 1}. [${(f.severity || 'info').toUpperCase()}] ${f.title}\n   • Surface: ${f.affectedSurface || f.url || 'N/A'}\n   • Description: ${f.description || 'No description'}\n   • Recommendation: ${f.recommendation || f.remediation || 'Apply secure coding controls'}\n   • OWASP: ${f.owasp?.id || f.owasp || 'General'}`).join('\n\n');
+
+                        const systemInstruction = `You are VIBE SHIELD AI Security Assistant, a Principal Application Security Engineer & QA Lead powered by NVIDIA AI.\n\nCRITICAL INSTRUCTIONS:\n- You MUST base all answers strictly on the verified live security scan report provided below.\n- Do NOT invent non-existent vulnerabilities or make up random facts. Always analyze the actual scan findings first.\n- Be concise, authoritative, and actionable. Use markdown formatting (**bold**, bullet points).\n\nVERIFIED SCAN REPORT:\n• Target URL: ${targetUrl}\n• Security Score: ${score}/100\n• Findings Summary: ${dedup.total || 0} Total (${dedup.critical || 0} Critical, ${dedup.high || 0} High, ${dedup.medium || 0} Medium, ${dedup.low || 0} Low)\n\nFULL FINDINGS DETAILS:\n${findingsList || 'No findings recorded in this scan.'}`;
 
                         const nvRes = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
                             method: 'POST',
@@ -1179,7 +1184,7 @@ jobs:
                                 'Authorization': `Bearer ${nvidiaKey}`
                             },
                             body: JSON.stringify({
-                                model: 'meta/llama-3.1-70b-instruct',
+                                model: 'meta/llama-3.2-11b-vision-instruct',
                                 messages: [
                                     { role: 'system', content: systemInstruction },
                                     { role: 'user', content: prompt }
@@ -1189,6 +1194,9 @@ jobs:
                             })
                         });
                         const nvData = await nvRes.json();
+                        if (!nvRes.ok) {
+                            console.error('NVIDIA API Response Error:', nvRes.status, JSON.stringify(nvData));
+                        }
                         const answerText = nvData?.choices?.[0]?.message?.content;
                         if (answerText) {
                             res.writeHead(200, { 'Content-Type': 'application/json' });
