@@ -2973,7 +2973,7 @@ ${currentWafBundle.artifacts.docker || ''}
 
         generateBaselineProgression(targetUrl) {
             const now = Date.now();
-            const host = targetUrl || 'https://jubidate-ai.vercel.app';
+            const host = targetUrl || window.currentScanStatus?.url || 'Target Website';
             return [
                 {
                     scanId: 'baseline-1',
