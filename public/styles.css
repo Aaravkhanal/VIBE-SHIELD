@@ -476,6 +476,12 @@ table.ft td { padding: 11px 14px; vertical-align: top; }
 .chat-typing span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes typing-bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
 
+.chat-code-block { position: relative; margin: 8px 0; background: #0f1117; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 10px 12px; font-family: 'Fira Code', 'Courier New', monospace; font-size: 11px; overflow-x: auto; color: #f8fafc; }
+.chat-code-block pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+.chat-inline-code { font-family: 'Fira Code', 'Courier New', monospace; font-size: 11px; padding: 2px 6px; background: rgba(0,0,0,0.06); border-radius: 4px; color: var(--accent-red); }
+.chat-copy-code-btn { position: absolute; top: 6px; right: 6px; font-size: 9px; padding: 2px 6px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 3px; color: rgba(255,255,255,0.7); cursor: pointer; transition: all 0.15s; }
+.chat-copy-code-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
 /* --- Side panels --------------------------------------- */
 .panel-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.25); z-index: 200; display: flex; align-items: flex-start; justify-content: flex-end; }
 .panel-backdrop.hidden { display: none; }

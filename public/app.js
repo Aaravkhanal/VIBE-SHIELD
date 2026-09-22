@@ -4404,8 +4404,25 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
             const div = document.createElement('div');
             div.className = `chat-msg ${role}`;
             const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            let formattedText = escapeHtml(text || '');
+
+            // Format code blocks ```code```
+            formattedText = formattedText.replace(/```([\s\S]*?)```/g, (match, code) => {
+                return `<div class="chat-code-block"><pre><code>${code.trim()}</code></pre><button type="button" class="chat-copy-code-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.innerText); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy', 2000);">Copy</button></div>`;
+            });
+
+            // Inline code `code`
+            formattedText = formattedText.replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>');
+
+            // Bold **text**
+            formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+            // Newlines
+            formattedText = formattedText.replace(/\n/g, '<br>');
+
             div.innerHTML = `
-                <div class="chat-bubble">${text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</div>
+                <div class="chat-bubble">${formattedText}</div>
                 <span class="chat-time">${now}</span>
             `;
             this.messagesEl.appendChild(div);
