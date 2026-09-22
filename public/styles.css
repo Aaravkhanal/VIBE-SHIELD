@@ -270,13 +270,28 @@ body {
 .console-body { height: 240px; overflow-y: auto; padding: 12px 14px; font-family: 'Fira Code', 'Courier New', monospace; font-size: 11px; line-height: 1.8; background: #0f1117; }
 .console-body::-webkit-scrollbar { width: 4px; }
 .console-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
-.log-line { color: rgba(255,255,255,0.55); }
-.log-line .log-time { color: rgba(255,255,255,0.2); margin-right: 8px; }
-.log-line .log-agent { color: rgba(255,255,255,0.35); margin-right: 6px; }
+.log-line { color: #e2e8f0; font-family: 'Fira Code', 'Courier New', monospace; font-size: 11px; line-height: 1.7; padding: 2px 0; }
+.log-line .log-time { color: #64748b; margin-right: 8px; font-weight: 500; }
+.log-line .log-agent { color: #38bdf8; font-weight: 600; margin-right: 6px; }
 .log-line.log-error .log-msg { color: #f87171; }
 .log-line.log-warn .log-msg { color: #fbbf24; }
 .log-line.log-success .log-msg { color: #4ade80; }
-.log-line.log-info .log-msg { color: #60a5fa; }
+.log-line.log-info .log-msg { color: #e2e8f0; }
+
+.terminal-line { font-family: 'Fira Code', 'Courier New', monospace; font-size: 11px; line-height: 1.7; color: #f8fafc; padding: 2px 0; word-break: break-word; }
+.terminal-line .t-stamp { color: #94a3b8; font-weight: 500; margin-right: 6px; }
+.terminal-line .t-agent { color: #38bdf8; font-weight: 600; margin-right: 6px; display: inline-block; }
+.terminal-line .t-msg { color: #f1f5f9; }
+.terminal-line.level-error .t-msg, .terminal-line.log-error .t-msg { color: #f87171; font-weight: 600; }
+.terminal-line.level-warn .t-msg, .terminal-line.log-warn .t-msg { color: #fbbf24; }
+.terminal-line.level-success .t-msg, .terminal-line.log-success .t-msg { color: #4ade80; }
+.terminal-line.agent-SYSTEM .t-agent { color: #a78bfa; }
+.terminal-line.agent-CRAWL .t-agent { color: #38bdf8; }
+.terminal-line.agent-SEC .t-agent { color: #f43f5e; }
+.terminal-line.agent-AI .t-agent { color: #fbbf24; }
+.terminal-line.agent-QA .t-agent { color: #a3e635; }
+.terminal-line.agent-LOGIC .t-agent { color: #c084fc; }
+.terminal-line.agent-API .t-agent { color: #2dd4bf; }
 
 /* --- Results Layout ------------------------------------ */
 .results-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; padding-top: 32px; border-top: 1px solid var(--border); }

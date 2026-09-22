@@ -189,6 +189,26 @@ const server = http.createServer((req, res) => {
         if (fs.existsSync(fullReportPath) && fullReportPath.startsWith(REPORTS_DIR)) {
             return serveStaticFile(res, fullReportPath, getContentType(fullReportPath));
         }
+
+        // On-the-fly HTML report generation fallback if report.html is missing
+        const parts = relativeReportPath.split('/');
+        const scanId = parts[0];
+        if (scanId && scanId !== 'null' && scanId !== 'undefined') {
+            const scanDir = path.join(REPORTS_DIR, scanId);
+            const reportJsonPath = path.join(scanDir, 'report.json');
+            if (fs.existsSync(reportJsonPath)) {
+                try {
+                    const reportData = JSON.parse(fs.readFileSync(reportJsonPath, 'utf-8'));
+                    const generateReport = require('./reporting/report-generator');
+                    generateReport(reportData, scanDir);
+                    if (fs.existsSync(fullReportPath)) {
+                        return serveStaticFile(res, fullReportPath, getContentType(fullReportPath));
+                    }
+                } catch(e) {
+                    console.error('On-the-fly report generation error:', e);
+                }
+            }
+        }
     }
 
     // API: Start Scan
@@ -882,9 +902,12 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
         let reportJson = targetData?.report;
 
         // If not in activeScans, try disk
-        if (!reportJson) {
+        if (!reportJson && fs.existsSync(REPORTS_DIR)) {
             try {
-                const reportDirs = fs.readdirSync(REPORTS_DIR).filter(d => fs.statSync(path.join(REPORTS_DIR, d)).isDirectory());
+                const reportDirs = fs.readdirSync(REPORTS_DIR).filter(d => {
+                    const full = path.join(REPORTS_DIR, d);
+                    return fs.existsSync(full) && fs.statSync(full).isDirectory();
+                });
                 for (const d of reportDirs) {
                     if (d === scanId || d.includes(scanId)) {
                         const p = path.join(REPORTS_DIR, d, 'report.json');
@@ -897,10 +920,20 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
             } catch (e) {}
         }
 
-        // Fallback to most recent report if scanId is 'latest'
-        if (!reportJson && (scanId === 'latest' || scanId === 'current')) {
+        // Fallback to scanHistory or latest report on disk if scanId is 'latest', 'current', or missing
+        if (!reportJson) {
+            const hist = scanHistory.find(s => s.scanId === scanId || scanId === 'latest' || scanId === 'current') || scanHistory[0];
+            if (hist?.report) {
+                reportJson = hist.report;
+            }
+        }
+
+        if (!reportJson && fs.existsSync(REPORTS_DIR)) {
             try {
-                const reportDirs = fs.readdirSync(REPORTS_DIR).filter(d => fs.statSync(path.join(REPORTS_DIR, d)).isDirectory()).sort().reverse();
+                const reportDirs = fs.readdirSync(REPORTS_DIR).filter(d => {
+                    const full = path.join(REPORTS_DIR, d);
+                    return fs.existsSync(full) && fs.statSync(full).isDirectory();
+                }).sort().reverse();
                 if (reportDirs.length > 0) {
                     const p = path.join(REPORTS_DIR, reportDirs[0], 'report.json');
                     if (fs.existsSync(p)) reportJson = JSON.parse(fs.readFileSync(p, 'utf-8'));
