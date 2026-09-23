@@ -15,7 +15,8 @@
     "bin/",
     "scripts/",
     "action.yml",
-    "README.md"
+    "README.md",
+    "public/"
   ],
   "scripts": {
     "dev": "node src/server.js",
@@ -23,7 +24,9 @@
     "web": "node src/cli.js web",
     "scan": "node src/cli.js scan",
     "postinstall": "node scripts/postinstall.js",
-    "prepublishOnly": "node src/cli.js --help"
+    "prepublishOnly": "node src/cli.js --help",
+    "test": "node --test tests/*.test.js",
+    "test:browser": "node tests/browser.integration.js"
   },
   "keywords": [
     "security",
@@ -58,7 +61,6 @@
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
-    "nanoid": "^5.0.9",
     "ora": "^8.1.1",
     "playwright": "^1.49.1",
     "winston": "^3.17.0"

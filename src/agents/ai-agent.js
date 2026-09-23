@@ -39,6 +39,7 @@ export class AIAgent extends BaseAgent {
         // AI endpoint detection and abuse testing send live requests (benign
         // probes + injection payloads), so they require at least safe-active.
         if (!allows(config, 'safe-active')) {
+            this.assessment = 'not_assessed';
             this._log(`AI abuse testing skipped — requires active probing (current: ${getSafetyMode(config)} mode)`);
             this.progress('complete', 'AI testing skipped (passive mode)', 100);
             return;
@@ -54,6 +55,7 @@ export class AIAgent extends BaseAgent {
         this.progress('detect', `Found ${aiSurfaces.length} AI endpoints`, 10);
 
         if (aiSurfaces.length === 0) {
+            this.assessment = 'not_assessed';
             this._log('No AI endpoints detected — skipping AI abuse tests');
             this.progress('complete', 'No AI endpoints found — scan skipped', 100);
             return;

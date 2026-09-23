@@ -78,7 +78,7 @@ outputs:
   high-count:
     description: 'Number of high findings'
   exit-code:
-    description: 'Exit code (0 = pass, 1 = findings above threshold)'
+    description: 'Exit code (0 = pass, 1 = findings above threshold, 2 = incomplete or failed scan)'
 
 runs:
   using: 'composite'
@@ -122,50 +122,33 @@ runs:
       run: |
         REPORT_DIR="${{ runner.temp }}/vibe-shield-reports"
         
-        # Build command
-        CMD="node ${{ github.action_path }}/src/cli.js scan \"${VIBE_SHIELD_TARGET_URL}\""
-        CMD="${CMD} -m ${VIBE_SHIELD_MODULES}"
-        CMD="${CMD} -s ${VIBE_SHIELD_SEVERITY}"
-        CMD="${CMD} -o ${REPORT_DIR}"
-        CMD="${CMD} --max-pages ${VIBE_SHIELD_MAX_PAGES}"
-        CMD="${CMD} --prod-safe"
-        
-        if [ -n "${VIBE_SHIELD_CONFIG}" ]; then
-          CMD="${CMD} -c ${VIBE_SHIELD_CONFIG}"
+        # Arrays preserve spaces and prevent shell evaluation of input values.
+        CMD=(node "${{ github.action_path }}/src/cli.js" scan "$VIBE_SHIELD_TARGET_URL"
+          -m "$VIBE_SHIELD_MODULES" -s "$VIBE_SHIELD_SEVERITY" -o "$REPORT_DIR"
+          --max-pages "$VIBE_SHIELD_MAX_PAGES" --prod-safe)
+        if [ -n "$VIBE_SHIELD_CONFIG" ]; then CMD+=(-c "$VIBE_SHIELD_CONFIG"); fi
+        if [ -n "$VIBE_SHIELD_AUTH_USER" ] && [ -n "$VIBE_SHIELD_AUTH_PASS" ]; then
+          CMD+=(--username "$VIBE_SHIELD_AUTH_USER" --password "$VIBE_SHIELD_AUTH_PASS" --auth-strategy "$VIBE_SHIELD_AUTH_STRATEGY")
         fi
-        
-        if [ -n "${VIBE_SHIELD_AUTH_USER}" ] && [ -n "${VIBE_SHIELD_AUTH_PASS}" ]; then
-          CMD="${CMD} --username ${VIBE_SHIELD_AUTH_USER} --password ${VIBE_SHIELD_AUTH_PASS} --auth-strategy ${VIBE_SHIELD_AUTH_STRATEGY}"
+        if [ "$VIBE_SHIELD_VERBOSE" = "true" ]; then CMD+=(--verbose); fi
+        if [ "$VIBE_SHIELD_ENABLE_LLM" = "true" ] && { [ -n "$OPENAI_API_KEY" ] || [ -n "$ANTHROPIC_API_KEY" ]; }; then
+          CMD+=(--llm --llm-consent --llm-provider "$VIBE_SHIELD_LLM_PROVIDER")
+          if [ -n "$VIBE_SHIELD_LLM_MODEL" ]; then CMD+=(--llm-model "$VIBE_SHIELD_LLM_MODEL"); fi
         fi
-        
-        if [ "${VIBE_SHIELD_VERBOSE}" = "true" ]; then
-          CMD="${CMD} --verbose"
-        fi
+        SCAN_EXIT=0
+        "${CMD[@]}" || SCAN_EXIT=$?
+        export REPORT_DIR
 
-        if [ "${VIBE_SHIELD_ENABLE_LLM}" = "true" ] && { [ -n "${OPENAI_API_KEY}" ] || [ -n "${ANTHROPIC_API_KEY}" ]; }; then
-          CMD="${CMD} --llm --llm-consent --llm-provider ${VIBE_SHIELD_LLM_PROVIDER}"
-          if [ -n "${VIBE_SHIELD_LLM_MODEL}" ]; then
-            CMD="${CMD} --llm-model ${VIBE_SHIELD_LLM_MODEL}"
-          fi
-        fi
-        
-        # Run scan
-        eval ${CMD} || true
-        
         # Parse results
         if [ -f "${REPORT_DIR}/report.json" ]; then
-          eval $(node --input-type=module -e "
-            import { readFileSync } from 'fs';
-            const r = JSON.parse(readFileSync('${REPORT_DIR}/report.json', 'utf-8'));
+          read -r FINDINGS CRITICAL HIGH MEDIUM LOW COVERAGE < <(node --input-type=module -e '
+            import { readFileSync } from "fs";
+            const r = JSON.parse(readFileSync(process.env.REPORT_DIR + "/report.json", "utf-8"));
             const s = r.dedupSummary || r.summary;
-            console.log('FINDINGS=' + s.total);
-            console.log('CRITICAL=' + s.critical);
-            console.log('HIGH=' + s.high);
-            console.log('MEDIUM=' + s.medium);
-            console.log('LOW=' + s.low);
-          ")
+            console.log([s.total, s.critical, s.high, s.medium, s.low, r.coverage?.status || "unknown"].join(" "));
+          ')
         else
-          FINDINGS=0; CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0
+          FINDINGS=0; CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0; COVERAGE=missing
         fi
         
         echo "report-path=${REPORT_DIR}" >> $GITHUB_OUTPUT
@@ -184,6 +167,7 @@ runs:
           none)     EXIT_CODE=0 ;;
         esac
         
+        if [ "$SCAN_EXIT" -ne 0 ] || [ "$COVERAGE" != "complete" ]; then EXIT_CODE=2; fi
         echo "exit-code=${EXIT_CODE}" >> $GITHUB_OUTPUT
 
     - name: Upload SARIF to GitHub Security
@@ -280,9 +264,13 @@ runs:
         retention-days: 30
 
     - name: Check Threshold
-      if: steps.scan.outputs.exit-code == '1'
+      if: steps.scan.outputs.exit-code != '0'
       shell: bash
       run: |
+        if [ "${{ steps.scan.outputs.exit-code }}" = "2" ]; then
+          echo "::error::VIBE SHIELD scan failed or has incomplete coverage. Review the scan logs and report."
+          exit 2
+        fi
         echo "::error::VIBE SHIELD scan found findings at or above the '${{ inputs.fail-on-severity }}' severity threshold."
         echo "Critical: ${{ steps.scan.outputs.critical-count }}, High: ${{ steps.scan.outputs.high-count }}, Total: ${{ steps.scan.outputs.findings-count }}"
         exit 1

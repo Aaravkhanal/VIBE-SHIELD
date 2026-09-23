@@ -156,6 +156,11 @@ export class Orchestrator {
      */
     async _runAgent(agent) {
         try {
+            if (agent.dependencies.some(name => this._agents.get(name)?.status === 'error')) {
+                agent._status = 'skipped';
+                this.eventBus.emit('agent:skipped', { agentName: agent.name, message: 'Dependency failed' });
+                return;
+            }
             await agent.run();
 
             // If this is the crawl agent, store surface inventory for downstream agents
@@ -226,6 +231,8 @@ export class Orchestrator {
                 status: agent.status,
                 duration: agent.duration,
                 findingsCount: agent.findings.length,
+                errors: agent.errors,
+                assessment: agent.assessment,
             };
         }
 

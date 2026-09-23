@@ -1,5 +1,6 @@
 import { createFinding } from '../../utils/finding.js';
 import dns from 'dns/promises';
+import { isIP } from 'node:net';
 
 /**
  * SubdomainScanner — Discovers related subdomains via DNS bruteforce
@@ -19,6 +20,7 @@ export class SubdomainScanner {
         this.logger?.info?.('Subdomain Scanner: starting enumeration');
         const findings = [];
         const baseUrl = new URL(surfaceInventory.baseUrl);
+        if (isIP(baseUrl.hostname.replace(/^\[|\]$/g, '')) || baseUrl.hostname === 'localhost' || baseUrl.hostname.endsWith('.localhost')) return [];
         const domain = this._extractRootDomain(baseUrl.hostname);
 
         if (!domain) {

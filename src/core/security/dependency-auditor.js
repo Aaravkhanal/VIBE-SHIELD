@@ -18,7 +18,12 @@ export class DependencyAuditor {
      * Run dependency audit on the project.
      */
     async audit() {
-        const projectRoot = process.cwd();
+        // A website URL does not identify the scanner's own local package tree.
+        if (!this.config.project_root) {
+            this.logger?.info?.('Dependency audit not assessed: no target project directory configured.');
+            return [];
+        }
+        const projectRoot = path.resolve(this.config.project_root);
 
         // Try npm audit first
         if (fs.existsSync(path.join(projectRoot, 'package-lock.json')) ||

@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { randomId } from './id.js';
 import { tagFinding } from './owasp-mapper.js';
 import { inferCvssForFinding } from './cvss-calculator.js';
 
@@ -23,7 +23,7 @@ export function createFinding({
     cvss = null,
 }) {
     const prefix = module.toUpperCase();
-    const shortId = nanoid(6);
+    const shortId = randomId(6);
 
     const baseFinding = {
         id: `VIBE SHIELD-${prefix}-${shortId}`,

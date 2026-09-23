@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VIBE SHIELD — Autonomous Security Intelligence</title>
   <meta name="description" content="Enter any URL and VIBE SHIELD autonomously audits it like a cybersecurity expert — finding vulnerabilities, rating performance, and telling you exactly what to fix.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -298,7 +295,7 @@
                   <div class="trend-kpi"><span class="kpi-label">Velocity</span><span class="kpi-val" id="kpi-velocity">—</span></div>
                   <div class="trend-kpi"><span class="kpi-label">Status</span><span class="kpi-val" id="kpi-status">—</span></div>
                 </div>
-                <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                <div id="trend-metric-toggles" style="display:flex;gap:5px;flex-wrap:wrap;">
                   <button type="button" class="trend-filter-btn active" data-metric="overall">Overall</button>
                   <button type="button" class="trend-filter-btn" data-metric="headers">Headers</button>
                   <button type="button" class="trend-filter-btn" data-metric="ai">AI</button>
@@ -362,10 +359,10 @@
           <!-- Attack chain graph -->
           <div class="canvas-card">
             <div class="canvas-card-header">
-              <span class="canvas-card-title">Attack Vector Chain</span>
+              <span class="canvas-card-title">Finding Relationships</span>
               <div class="canvas-card-controls">
                 <button type="button" id="btn-reset-graph" class="canvas-ctrl-btn">Reset</button>
-                <button type="button" id="btn-pulse-paths" class="canvas-ctrl-btn">Simulate Exploit</button>
+                <button type="button" id="btn-pulse-paths" class="canvas-ctrl-btn">Animate Connections</button>
               </div>
             </div>
             <div class="canvas-body">

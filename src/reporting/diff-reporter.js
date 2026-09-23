@@ -18,8 +18,8 @@ export class DiffReporter {
     /**
      * Generate diff between current findings and the most recent previous run.
      */
-    generateDiff(currentFindings, outputDir) {
-        const previousFindings = this._loadPreviousFindings(outputDir);
+    generateDiff(currentFindings, outputDir, target) {
+        const previousFindings = this._loadPreviousFindings(outputDir, target);
 
         if (!previousFindings) {
             this.logger?.info?.('Diff Report: no previous scan found — skipping regression diff');
@@ -44,15 +44,14 @@ export class DiffReporter {
     /**
      * Load findings from the most recent previous scan run.
      */
-    _loadPreviousFindings(currentOutputDir) {
+    _loadPreviousFindings(currentOutputDir, target) {
         try {
             const reportsRoot = path.dirname(currentOutputDir);
             if (!fs.existsSync(reportsRoot)) return null;
 
             const runs = fs.readdirSync(reportsRoot)
                 .filter(d => fs.statSync(path.join(reportsRoot, d)).isDirectory())
-                .sort()
-                .reverse();
+                .sort((a, b) => fs.statSync(path.join(reportsRoot, b)).mtimeMs - fs.statSync(path.join(reportsRoot, a)).mtimeMs);
 
             // Find the most recent run that isn't the current one
             const currentName = path.basename(currentOutputDir);
@@ -61,6 +60,8 @@ export class DiffReporter {
                 const reportPath = path.join(reportsRoot, run, 'report.json');
                 if (fs.existsSync(reportPath)) {
                     const data = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+                    if (target && data.meta?.target !== target) continue;
+                    if (data.coverage?.status !== 'complete') continue;
                     return data.findings || [];
                 }
             }

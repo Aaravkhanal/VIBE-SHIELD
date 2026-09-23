@@ -454,6 +454,7 @@ export function evaluateAiThreatMatrix(report = {}) {
     
     return OWASP_LLM_TAXONOMY.map(category => {
         const matchingFindings = findings.filter(f => {
+            if (f.module !== 'ai') return false;
             const text = (f.title + ' ' + f.description + ' ' + (f.module || '') + ' ' + (f.owasp?.id || '')).toLowerCase();
             if (category.id === 'LLM01' && (text.includes('prompt injection') || text.includes('jailbreak') || text.includes('system prompt'))) return true;
             if (category.id === 'LLM02' && (text.includes('system prompt') || text.includes('leak') || text.includes('disclosure') || text.includes('api key'))) return true;
@@ -470,8 +471,8 @@ export function evaluateAiThreatMatrix(report = {}) {
 
         return {
             ...category,
-            status: isVulnerable ? 'VULNERABLE' : 'DEFENDED',
-            statusBadge: isVulnerable ? 'VULNERABILITY DETECTED' : 'GUARDRAIL ACTIVE',
+            status: isVulnerable ? 'VULNERABLE' : 'NOT_VERIFIED',
+            statusBadge: isVulnerable ? 'FINDING RECORDED' : 'NO DEFENSE VERIFICATION',
             findingsCount: matchingFindings.length,
             findings: matchingFindings.map(f => ({ id: f.id, title: f.title, severity: f.severity }))
         };

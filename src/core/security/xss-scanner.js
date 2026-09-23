@@ -23,15 +23,15 @@ export class XSSScanner {
 
     // XSS test payloads — designed for detection, not exploitation
     static PAYLOADS = [
-        { name: 'Basic script tag', payload: '<script>window.__VIBE SHIELD_XSS_1=1</script>', marker: '__VIBE SHIELD_XSS_1' },
-        { name: 'IMG onerror', payload: '<img src=x onerror="window.__VIBE SHIELD_XSS_2=1">', marker: '__VIBE SHIELD_XSS_2' },
-        { name: 'SVG onload', payload: '<svg onload="window.__VIBE SHIELD_XSS_3=1">', marker: '__VIBE SHIELD_XSS_3' },
-        { name: 'Event handler', payload: '" onfocus="window.__VIBE SHIELD_XSS_4=1" autofocus="', marker: '__VIBE SHIELD_XSS_4' },
+        { name: 'Basic script tag', payload: '<script>window.__VIBE_SHIELD_XSS_1=1</script>', marker: '__VIBE_SHIELD_XSS_1' },
+        { name: 'IMG onerror', payload: '<img src=x onerror="window.__VIBE_SHIELD_XSS_2=1">', marker: '__VIBE_SHIELD_XSS_2' },
+        { name: 'SVG onload', payload: '<svg onload="window.__VIBE_SHIELD_XSS_3=1">', marker: '__VIBE_SHIELD_XSS_3' },
+        { name: 'Event handler', payload: '" onfocus="window.__VIBE_SHIELD_XSS_4=1" autofocus="', marker: '__VIBE_SHIELD_XSS_4' },
         { name: 'Template literal', payload: '${alert(1)}', marker: '${alert' },
         { name: 'HTML entity bypass', payload: '&lt;script&gt;alert(1)&lt;/script&gt;', marker: '<script>alert' },
-        { name: 'Single quote break', payload: "' onmouseover='window.__VIBE SHIELD_XSS_5=1", marker: '__VIBE SHIELD_XSS_5' },
-        { name: 'Double quote break', payload: '" onmouseover="window.__VIBE SHIELD_XSS_6=1', marker: '__VIBE SHIELD_XSS_6' },
-        { name: 'JavaScript URL', payload: 'javascript:window.__VIBE SHIELD_XSS_7=1', marker: '__VIBE SHIELD_XSS_7' },
+        { name: 'Single quote break', payload: "' onmouseover='window.__VIBE_SHIELD_XSS_5=1", marker: '__VIBE_SHIELD_XSS_5' },
+        { name: 'Double quote break', payload: '" onmouseover="window.__VIBE_SHIELD_XSS_6=1', marker: '__VIBE_SHIELD_XSS_6' },
+        { name: 'JavaScript URL', payload: 'javascript:window.__VIBE_SHIELD_XSS_7=1', marker: '__VIBE_SHIELD_XSS_7' },
     ];
 
     /**

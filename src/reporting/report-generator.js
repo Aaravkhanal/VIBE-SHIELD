@@ -36,7 +36,7 @@ export class ReportGenerator {
   /**
    * Generate all reports from findings and test results.
    */
-  async generate({ findings, deduplicated, dedupStats, correlations, testSummary, surfaceInventory, outputDir, modules }) {
+  async generate({ agents, findings, deduplicated, dedupStats, correlations, testSummary, surfaceInventory, outputDir, modules }) {
     const reportDir = outputDir || path.join(process.cwd(), 'vibe-shield-reports', this._timestamp());
     if (!fs.existsSync(reportDir)) {
       fs.mkdirSync(reportDir, { recursive: true });
@@ -70,12 +70,20 @@ export class ReportGenerator {
         scannedAt: new Date().toISOString(),
         duration: testSummary?.duration || null,
       },
+      agents: agents || {},
+      coverage: {
+        status: !agents || Object.values(agents).some(a => a.status !== 'done') || (surfaceInventory?.pages || []).some(p => typeof p.status !== 'number' || p.status >= 400) ? 'incomplete' : 'complete',
+        safetyMode: this.config.safety_mode || 'safe-active',
+        dependencyAudit: this.config.project_root ? 'Target source directory configured' : 'Not assessed: no target source directory',
+        note: 'Automated findings reflect the tested surfaces and selected modules. Zero findings do not establish that a website is vulnerability-free.',
+      },
       summary,
       dedupSummary,
       dedupStats: dedupStats || null,
       correlations: correlations || [],
       testSummary: testSummary || {},
       surfaceInventory: {
+        pages: (surfaceInventory?.pages || []).map(({ url, status, title }) => ({ url, status, title })),
         totalPages: surfaceInventory?.totalPages || 0,
         totalApis: surfaceInventory?.totalApis || 0,
         totalForms: surfaceInventory?.totalForms || 0,
@@ -106,7 +114,7 @@ export class ReportGenerator {
 
     // Generate Diff Report (regression detection)
     const diffReporter = new DiffReporter(this.logger);
-    const diff = diffReporter.generateDiff(filteredFindings, reportDir);
+    const diff = diffReporter.generateDiff(filteredFindings, reportDir, this.config.target_url);
 
     this.logger?.info?.(`Reports generated at ${reportDir}`);
     return { reportDir, jsonPath, mdPath, htmlPath, sarifPath, summary, dedupSummary, diff };
@@ -152,7 +160,8 @@ export class ReportGenerator {
   }
 
   _generateMarkdown(data) {
-    const { meta, summary, testSummary, surfaceInventory, findings } = data;
+    const { meta, testSummary, surfaceInventory, findings } = data;
+    const summary = data.dedupSummary || data.summary;
     let md = '';
 
     md += `# 呪 VIBE SHIELD Security & Quality Report\n\n`;
@@ -163,6 +172,7 @@ export class ReportGenerator {
 
     md += `---\n\n`;
     md += `## Executive Summary\n\n`;
+    md += `**Coverage:** ${data.coverage?.status || 'unknown'}. ${data.coverage?.note || ''}\n\n`;
     if (meta.executiveSummary) {
       md += `${meta.executiveSummary}\n\n`;
       md += `*(AI-assisted summary — advisory only)*\n\n`;
@@ -244,7 +254,8 @@ export class ReportGenerator {
   }
 
   _generateHTML(data) {
-    const { meta, summary, testSummary, surfaceInventory, findings } = data;
+    const { meta, testSummary, surfaceInventory, findings } = data;
+    const summary = data.dedupSummary || data.summary;
     const sevColors = {
       critical: '#ff1744',
       high: '#ff6d00',
@@ -258,7 +269,7 @@ export class ReportGenerator {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VIBE SHIELD Report — ${meta.target}</title>
+  <title>VIBE SHIELD Report — ${this._escapeHtml(meta.target)}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -330,12 +341,23 @@ export class ReportGenerator {
     .filter-btn.active { border-color: var(--accent); color: var(--accent); }
     .filter-btn:hover { border-color: var(--accent); }
     footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 0.75rem; text-align: center; }
+    .coverage { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); line-height: 1.6; }
+    .finding, .meta { overflow-wrap: anywhere; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+    @media (max-width: 600px) { body { padding: 1rem; } .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media print {
+      :root { --bg: white; --surface: white; --surface-2: #eee; --text: #111; --text-dim: #444; --border: #bbb; --accent: #176144; }
+      body { padding: 0; } .filters, .print-button { display: none; }
+      .finding-card, .summary-grid { break-inside: avoid; } pre { color: #111; background: #eee; }
+    }
   </style>
 </head>
 <body>
-  <h1>呪 VIBE SHIELD</h1>
+  <h1>VIBE SHIELD</h1>
+  <p class="coverage"><strong>Coverage: ${this._escapeHtml(data.coverage?.status || 'unknown')}</strong> · ${this._escapeHtml(data.coverage?.note || 'Automated findings apply only to the tested surfaces.')}</p>
+  <button class="filter-btn print-button" onclick="document.querySelectorAll('details').forEach(d => d.open = true); window.print()">Print / Save PDF</button>
   <div class="meta">
-    <span>Target: ${meta.target}</span>
+    <span>Target: ${this._escapeHtml(meta.target)}</span>
     <span>Modules: ${this._escapeHtml(meta.modulesLabel || formatModules(meta.modules))}</span>
     <span>Scanned: ${new Date(meta.scannedAt).toLocaleString()}</span>
   </div>
@@ -378,14 +400,18 @@ export class ReportGenerator {
     ` : ''}
   </div>
 
+  <h2>Module coverage</h2>
+  <ul>${Object.entries(data.agents || {}).map(([name, agent]) => `<li><strong>${this._escapeHtml(name)}:</strong> ${this._escapeHtml(agent.assessment === 'not_assessed' ? 'Not assessed' : agent.status)}${(agent.errors || []).map(error => `<p>${this._escapeHtml(error)}</p>`).join('')}</li>`).join('')}</ul>
+  <p>Safety mode: ${this._escapeHtml(data.coverage?.safetyMode || 'Unknown')}. Dependency audit: ${this._escapeHtml(data.coverage?.dependencyAudit || 'Not assessed')}.</p>
   <h2>Findings (${summary.total})</h2>
+  ${findings.length === 0 ? '<p>No findings at the configured threshold. Review coverage and scan errors before drawing conclusions.</p>' : ''}
   <div class="filter-bar">
-    <button class="filter-btn active" onclick="filterFindings('all')">All (${summary.total})</button>
-    ${summary.critical > 0 ? `<button class="filter-btn" onclick="filterFindings('critical')">Critical (${summary.critical})</button>` : ''}
-    ${summary.high > 0 ? `<button class="filter-btn" onclick="filterFindings('high')">High (${summary.high})</button>` : ''}
-    ${summary.medium > 0 ? `<button class="filter-btn" onclick="filterFindings('medium')">Medium (${summary.medium})</button>` : ''}
-    ${summary.low > 0 ? `<button class="filter-btn" onclick="filterFindings('low')">Low (${summary.low})</button>` : ''}
-    ${summary.info > 0 ? `<button class="filter-btn" onclick="filterFindings('info')">Info (${summary.info})</button>` : ''}
+    <button class="filter-btn active" onclick="filterFindings('all', this)">All (${summary.total})</button>
+    ${summary.critical > 0 ? `<button class="filter-btn" onclick="filterFindings('critical', this)">Critical (${summary.critical})</button>` : ''}
+    ${summary.high > 0 ? `<button class="filter-btn" onclick="filterFindings('high', this)">High (${summary.high})</button>` : ''}
+    ${summary.medium > 0 ? `<button class="filter-btn" onclick="filterFindings('medium', this)">Medium (${summary.medium})</button>` : ''}
+    ${summary.low > 0 ? `<button class="filter-btn" onclick="filterFindings('low', this)">Low (${summary.low})</button>` : ''}
+    ${summary.info > 0 ? `<button class="filter-btn" onclick="filterFindings('info', this)">Info (${summary.info})</button>` : ''}
   </div>
 
   <div id="findings-container">
@@ -405,7 +431,7 @@ export class ReportGenerator {
       ${f.llm_triage ? `<div style="font-size:0.8rem;margin-top:0.5rem;color:var(--text-dim)"><strong>AI triage (advisory):</strong> ${this._escapeHtml(f.llm_triage.assessment)}${f.llm_triage.confidence != null ? ` (${(f.llm_triage.confidence * 100).toFixed(0)}%)` : ''}${f.llm_triage.note ? ` — ${this._escapeHtml(f.llm_triage.note)}` : ''}</div>` : ''}
       <details class="finding-details">
         <summary>Evidence & Reproduction</summary>
-        <pre>${this._escapeHtml(f.reproduction?.join?.('\\n') || '')}</pre>
+        <pre>${this._escapeHtml(f.reproduction?.join?.('\n') || '')}</pre>
         ${f.evidence ? `<pre>${this._escapeHtml(typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence, null, 2))}</pre>` : ''}
       </details>
     </div>`).join('')}
@@ -414,11 +440,11 @@ export class ReportGenerator {
   <footer>VIBE SHIELD 呪 v${meta.version} — Autonomous Security & Quality Intelligence</footer>
 
   <script>
-    function filterFindings(severity) {
+    function filterFindings(severity, button) {
       const cards = document.querySelectorAll('.finding-card');
       const btns = document.querySelectorAll('.filter-btn');
       btns.forEach(b => b.classList.remove('active'));
-      event.target.classList.add('active');
+      button.classList.add('active');
       cards.forEach(card => {
         card.style.display = severity === 'all' || card.dataset.severity === severity ? 'block' : 'none';
       });

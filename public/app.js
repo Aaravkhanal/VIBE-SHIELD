@@ -1,3 +1,4 @@
+import { calculateSecurityScore, generateSvgBadge } from '/security-score.js';
 document.addEventListener('DOMContentLoaded', () => {
     const scanForm = document.getElementById('scan-form');
     const targetUrlInput = document.getElementById('target-url');
@@ -166,6 +167,11 @@ document.addEventListener('DOMContentLoaded', () => {
         currentTargetDisplay.textContent = url;
 
         resetAgentCards();
+        window.liveScanTerminal?.setLogs([]);
+        window.currentScanReport = null;
+        window.currentScanStatus = null;
+        window.currentScanId = null;
+        activeReportPath = null;
         startTimer();
 
         try {
@@ -179,6 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) throw new Error(data.error || 'Failed to start scan');
 
             currentScanId = data.scanId;
+            window.currentScanId = data.scanId;
             streamScanProgress(currentScanId);
         } catch (err) {
             showToast('Scan Error: ' + err.message, 'error');
@@ -254,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             startBtn.classList.remove('scanning');
                             displayResults(status);
                             loadHistory();
-                            if (window.chatbotController) window.chatbotController.onScanComplete(status);
+                            if (window.chatbotController && status.report) window.chatbotController.onScanComplete(status);
                         }
                     } catch (e) {
                         console.error('Error parsing SSE scan status:', e);
@@ -321,7 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     startBtn.classList.remove('scanning');
                     displayResults(status);
                     loadHistory();
-                    if (window.chatbotController) window.chatbotController.onScanComplete(status);
+                    if (window.chatbotController && status.report) window.chatbotController.onScanComplete(status);
                 }
             } catch (e) {
                 console.error('Error polling status:', e);
@@ -347,7 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!card) return;
         const badge = card.querySelector('.agent-status-pill');
         const log = card.querySelector('.agent-log-text');
-        const statusMap = { 'running': 'running', 'done': 'done', 'complete': 'done', 'error': 'error', 'pending': '', 'waiting': '' };
+        const statusMap = { 'running': 'running', 'done': 'done', 'complete': 'done', 'error': 'error', 'partial': 'partial', 'skipped': 'skipped', 'pending': '', 'waiting': '' };
         if (badge) {
             badge.className = 'agent-status-pill ' + (statusMap[agentData.status] || '');
             badge.textContent = agentData.status ? agentData.status.charAt(0).toUpperCase() + agentData.status.slice(1) : 'Waiting';
@@ -387,6 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderSecurityScoreAudit(report) {
         const scoreData = calculateSecurityScore(report);
         currentScoreData = scoreData;
+        window.currentScoreData = scoreData;
 
         const scoreGradeText = document.getElementById('score-grade-text');
         const scoreNumberText = document.getElementById('score-number-text');
@@ -396,9 +404,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const liveBadgeContainer = document.getElementById('live-badge-container');
 
         if (scoreGradeText) scoreGradeText.textContent = scoreData.grade;
-        if (scoreNumberText) scoreNumberText.textContent = `${scoreData.overallScore}/100`;
+        if (scoreNumberText) scoreNumberText.textContent = scoreData.overallScore == null ? 'Not scored' : `${scoreData.overallScore}/100`;
         if (scoreStatusText) scoreStatusText.textContent = scoreData.statusText;
-        if (scoreSummaryDesc) scoreSummaryDesc.textContent = 'Multi-agent compound threat analysis completed.';
+        if (scoreSummaryDesc) scoreSummaryDesc.textContent = report.coverage?.note || 'Scores describe tested surfaces only.';
 
         // Animate the SVG ring
         if (scoreRingArc) {
@@ -415,8 +423,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const setSub = (key, val) => {
             const valEl = document.getElementById(`subscore-val-${key}`);
             const barEl = document.getElementById(`subscore-bar-${key}`);
-            if (valEl) valEl.textContent = `${val}%`;
-            if (barEl) barEl.style.width = `${val}%`;
+            if (valEl) valEl.textContent = val == null ? 'Not assessed' : `${val}/100`;
+            if (barEl) barEl.style.width = `${val ?? 0}%`;
         };
 
         setSub('headers', sub.headers.score);
@@ -428,86 +436,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (liveBadgeContainer) {
             liveBadgeContainer.innerHTML = generateSvgBadge(scoreData.grade, scoreData.overallScore, scoreData.gradeColor);
         }
-    }
-
-    function calculateSecurityScore(report) {
-        const summary = report.dedupSummary || report.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
-        const findings = report.findings || [];
-
-        let deductions = 0;
-        deductions += (summary.critical || 0) * 25;
-        deductions += (summary.high || 0) * 12;
-        deductions += (summary.medium || 0) * 4;
-        deductions += (summary.low || 0) * 1;
-
-        const overallScore = Math.max(0, Math.min(100, Math.round(100 - deductions)));
-
-        let grade = 'F';
-        let gradeColor = '#dc2626';
-        let statusText = 'Severe Exploitable Threats';
-
-        if (overallScore >= 97 && summary.critical === 0 && summary.high === 0) {
-            grade = 'A+'; gradeColor = '#16a34a'; statusText = 'Fortified & Hardened';
-        } else if (overallScore >= 90 && summary.critical === 0 && summary.high === 0) {
-            grade = 'A'; gradeColor = '#16a34a'; statusText = 'Excellent Defense Posture';
-        } else if (overallScore >= 80 && summary.critical === 0) {
-            grade = 'B'; gradeColor = '#2563eb'; statusText = 'Good Security with Minor Gaps';
-        } else if (overallScore >= 65) {
-            grade = 'C'; gradeColor = '#d97706'; statusText = 'Moderate Risk Exposure';
-        } else if (overallScore >= 50) {
-            grade = 'D'; gradeColor = '#d97706'; statusText = 'High Vulnerability Risk';
-        } else {
-            grade = 'F'; gradeColor = '#dc2626'; statusText = 'Severe Exploitable Threats';
-        }
-
-        const subCategories = {
-            headers: { name: 'Headers & Perimeter', score: 100 },
-            aiSafety: { name: 'AI & Prompt Defense', score: 100 },
-            apiAuth: { name: 'API & Auth Hardening', score: 100 },
-            logic: { name: 'Logic & Surface Hygiene', score: 100 }
-        };
-
-        findings.forEach(f => {
-            const title = (f.title || '').toLowerCase();
-            const mod = (f.module || f.agent || '').toLowerCase();
-            const sev = f.severity || 'low';
-            const penalty = sev === 'critical' ? 30 : sev === 'high' ? 18 : sev === 'medium' ? 8 : 2;
-
-            if (mod.includes('sec') || title.includes('csp') || title.includes('header') || title.includes('cors') || title.includes('tls')) {
-                subCategories.headers.score = Math.max(0, subCategories.headers.score - penalty);
-            } else if (mod.includes('ai') || title.includes('prompt') || title.includes('injection') || title.includes('jailbreak')) {
-                subCategories.aiSafety.score = Math.max(0, subCategories.aiSafety.score - penalty);
-            } else if (mod.includes('api') || title.includes('auth') || title.includes('token') || title.includes('cookie') || title.includes('graphql')) {
-                subCategories.apiAuth.score = Math.max(0, subCategories.apiAuth.score - penalty);
-            } else {
-                subCategories.logic.score = Math.max(0, subCategories.logic.score - penalty);
-            }
-        });
-
-        const badgeMarkdown = `[![VIBE SHIELD Security Grade](https://img.shields.io/badge/VIBE_SHIELD-Grade_${encodeURIComponent(grade)}_${overallScore}%2F100-${gradeColor.replace('#', '')}?style=for-the-badge&logo=shield)](https://github.com/Aaravkhanal/VIBE-SHIELD)`;
-        const badgeHtml = `<a href="https://github.com/Aaravkhanal/VIBE-SHIELD"><img src="https://img.shields.io/badge/VIBE_SHIELD-Grade_${encodeURIComponent(grade)}_${overallScore}%2F100-${gradeColor.replace('#', '')}?style=for-the-badge&logo=shield" alt="VIBE SHIELD Security Grade" /></a>`;
-
-        return { overallScore, grade, gradeColor, statusText, subCategories, badgeMarkdown, badgeHtml };
-    }
-
-    function generateSvgBadge(grade, score, color) {
-        const cleanColor = color || '#00ff88';
-        return `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="36" viewBox="0 0 220 36" role="img" aria-label="VIBE SHIELD: Grade ${grade}">
-  <defs>
-    <linearGradient id="badge-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0a0d14"/>
-      <stop offset="100%" stop-color="#141c2b"/>
-    </linearGradient>
-    <filter id="badge-glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="2" result="blur" />
-      <feComposite in="SourceGraphic" in2="blur" operator="over" />
-    </filter>
-  </defs>
-  <rect width="220" height="36" rx="8" fill="url(#badge-grad)" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
-  <text x="14" y="22" fill="#8a99b5" font-family="-apple-system,BlinkMacSystemFont,'Inter',sans-serif" font-size="11" font-weight="700" letter-spacing="0.5">🛡️ VIBE SHIELD</text>
-  <rect x="135" y="6" width="75" height="24" rx="5" fill="${cleanColor}" fill-opacity="0.15" stroke="${cleanColor}" stroke-opacity="0.4"/>
-  <text x="172.5" y="22" fill="${cleanColor}" font-family="-apple-system,BlinkMacSystemFont,'Fira Code',monospace" font-size="12" font-weight="800" text-anchor="middle" filter="url(#badge-glow)">${grade} · ${score}</text>
-</svg>`;
     }
 
     // Badge Copy Event Listeners
@@ -547,12 +475,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function displayResults(status) {
+        if (!status.report) {
+            showToast(status.failureReason || 'Scan failed without a report. Review the live logs.', 'error');
+            if (resultsSection) resultsSection.classList.add('hidden');
+            return;
+        }
+        if (status.status === 'partial') showToast(status.failureReason || 'Incomplete scan coverage', 'warn');
         if (progressSection) progressSection.classList.add('hidden');
         if (resultsSection) resultsSection.classList.remove('hidden');
         const heroSection = document.getElementById('hero-section');
         if (heroSection) heroSection.classList.add('scanned-compact');
         const report = status.report || {};
-        const summary = report.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
+        const summary = report.dedupSummary || report.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
         const scanId = status.scanId || currentScanId;
 
         window.currentScanReport = report;
@@ -565,9 +499,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('count-low').textContent = summary.low;
         document.getElementById('count-total').textContent = summary.total;
 
-        document.getElementById('results-meta-text').textContent = `Scanned ${status.url} in ${status.duration}s (${summary.total} total findings)`;
+        document.getElementById('results-meta-text').textContent = `${status.status === 'partial' ? 'Incomplete scan of' : 'Scanned'} ${status.url} in ${status.duration}s · ${summary.total} findings · ${report.surfaceInventory?.totalPages || 0} pages`;
 
         activeReportPath = status.reportHtmlUrl;
+        viewReportBtn.disabled = !activeReportPath;
+        viewReportBtn.onclick = null;
         if (activeReportPath) {
             viewReportBtn.onclick = () => window.open(activeReportPath, '_blank');
         }
@@ -819,13 +755,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Findings Table Rendering
     // ═══════════════════════════════════════════════
 
+    document.getElementById('findings-filter-row')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-sev-filter]');
+        if (!button) return;
+        document.querySelectorAll('[data-sev-filter]').forEach(btn => btn.classList.toggle('active', btn === button));
+        const findings = window.currentScanReport?.findings || [];
+        renderFindingsTable(button.dataset.sevFilter === 'all' ? findings : findings.filter(f => f.severity === button.dataset.sevFilter));
+    });
+
     function renderFindingsTable(findings) {
         const tbody = document.getElementById('findings-table-body');
         if (!tbody) return;
         tbody.innerHTML = '';
 
         if (!findings || findings.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="empty-state">🎉 Clean Scan! No findings at configured threshold.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No findings at the configured threshold. Review scan coverage before drawing conclusions.</td></tr>`;
             return;
         }
 
@@ -853,11 +797,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${escapeHtml(cvssData.vectorString || 'CVSS:3.1/...')}
                     </span>
                 </td>
-                <td><code>${escapeHtml(f.agent || 'VIBE-SHIELD')}</code></td>
+                <td><code>${escapeHtml(f.module || f.agent || 'Unknown')}</code></td>
                 <td>${escapeHtml(f.affected_surface || 'N/A')}</td>
-                <td>${escapeHtml(f.owasp?.id || f.owasp || 'A01:2021')}</td>
+                <td>${escapeHtml(f.owasp?.id || (typeof f.owasp === 'string' ? f.owasp : 'Not mapped'))}</td>
                 <td style="max-width: 380px;">
-                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">${escapeHtml(remediationText)}</div>
+                    <details class="finding-remediation"><summary>Remediation & evidence</summary><p>${escapeHtml(remediationText)}</p><pre>${escapeHtml(typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence || {}, null, 2))}</pre></details>
                     <div class="actions-cell-wrap">
                         <button type="button" class="btn-cvss-action open-cvss-btn" data-finding-index="${idx}">
                             🎯 CVSS Calc
@@ -1577,12 +1521,12 @@ ${currentWafBundle.artifacts.docker || ''}
                 };
             }
 
-            const filterGroup = document.getElementById('sitemap-filter-group');
+            const filterGroup = document.querySelector('#sitemap-container .canvas-card-controls');
             if (filterGroup) {
                 filterGroup.addEventListener('click', (e) => {
-                    const btn = e.target.closest('.terminal-filter-btn');
+                    const btn = e.target.closest('[data-sitemap-filter]');
                     if (!btn) return;
-                    filterGroup.querySelectorAll('.terminal-filter-btn').forEach(b => b.classList.remove('active'));
+                    filterGroup.querySelectorAll('[data-sitemap-filter]').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     this.activeFilter = btn.dataset.sitemapFilter || 'all';
                     this.applyFilter();
@@ -1614,8 +1558,7 @@ ${currentWafBundle.artifacts.docker || ''}
 
             const matched = findings.filter(f => {
                 const surface = (f.affected_surface || '').toLowerCase();
-                const desc = (f.description || '').toLowerCase();
-                return surface.includes(cleanTarget) || desc.includes(cleanTarget);
+                try { return new URL(surface).pathname.toLowerCase() === cleanTarget; } catch { return false; }
             });
 
             if (matched.length === 0) {
@@ -1679,50 +1622,19 @@ ${currentWafBundle.artifacts.docker || ''}
             // Extract discovered routes from findings & surface inventory
             const discoveredRoutesMap = new Map();
 
-            // Default core routes based on web apps
-            const defaultCore = [
-                { path: '/', label: 'Home Page (/)', category: 'page', method: 'GET', auth: 'Public', inputs: 'None' },
-                { path: '/login', label: 'Auth Gateway (/login)', category: 'auth', method: 'POST', auth: 'Public Ingest', inputs: 'username, password' },
-                { path: '/dashboard', label: 'Dashboard (/dashboard)', category: 'auth', method: 'GET', auth: 'Protected (Session Cookie)', inputs: 'User state' },
-                { path: '/settings', label: 'Settings (/settings)', category: 'page', method: 'GET', auth: 'Protected', inputs: 'profile form' }
-            ];
-
-            defaultCore.forEach(r => discoveredRoutesMap.set(r.path, r));
-
-            // Extract routes from findings
-            findings.forEach(f => {
-                const text = `${f.affected_surface || ''} ${f.description || ''}`;
-                const apiMatches = text.match(/\/api\/[a-zA-Z0-9_\-\/]+/g) || [];
-                apiMatches.forEach(apiPath => {
-                    if (!discoveredRoutesMap.has(apiPath)) {
-                        discoveredRoutesMap.set(apiPath, {
-                            path: apiPath,
-                            label: apiPath,
-                            category: 'api',
-                            method: apiPath.includes('auth') || apiPath.includes('generate') ? 'POST' : 'GET',
-                            auth: apiPath.includes('auth') || apiPath.includes('profile') ? 'Session Required' : 'Public API',
-                            inputs: 'JSON Payload'
-                        });
-                    }
-                });
-
-                const routeMatches = text.match(/https?:\/\/[^\s\/'"]+(\/[a-zA-Z0-9_\-\/]+)/g) || [];
-                routeMatches.forEach(fullUrl => {
-                    try {
-                        const parsed = new URL(fullUrl);
-                        if (parsed.pathname && !discoveredRoutesMap.has(parsed.pathname)) {
-                            discoveredRoutesMap.set(parsed.pathname, {
-                                path: parsed.pathname,
-                                label: parsed.pathname,
-                                category: parsed.pathname.startsWith('/api') ? 'api' : 'page',
-                                method: 'GET',
-                                auth: 'Standard',
-                                inputs: 'None'
-                            });
-                        }
-                    } catch(e) {}
-                });
-            });
+            for (const page of report.surfaceInventory?.pages || []) {
+                try {
+                    const parsed = new URL(page.url);
+                    discoveredRoutesMap.set(parsed.pathname, { path: parsed.pathname, label: parsed.pathname, category: 'page', method: 'GET', auth: 'Not assessed', inputs: 'Not assessed' });
+                } catch {}
+            }
+            for (const f of findings) {
+                try {
+                    const parsed = new URL(f.affected_surface);
+                    if (parsed.origin !== new URL(targetUrl).origin) continue;
+                    if (!discoveredRoutesMap.has(parsed.pathname)) discoveredRoutesMap.set(parsed.pathname, { path: parsed.pathname, label: parsed.pathname, category: 'page', method: 'Unknown', auth: 'Not assessed', inputs: 'See finding evidence' });
+                } catch {}
+            }
 
             // Count findings per route
             const routesList = Array.from(discoveredRoutesMap.values());
@@ -1730,8 +1642,7 @@ ${currentWafBundle.artifacts.docker || ''}
                 const clean = r.path.toLowerCase();
                 const matchedFindings = findings.filter(f => {
                     const aff = (f.affected_surface || '').toLowerCase();
-                    const desc = (f.description || '').toLowerCase();
-                    return aff.includes(clean) || desc.includes(clean);
+                    try { return new URL(aff).pathname.toLowerCase() === clean; } catch { return false; }
                 });
                 r.vulnCount = matchedFindings.length;
                 r.matchedFindings = matchedFindings;
@@ -1910,7 +1821,9 @@ ${currentWafBundle.artifacts.docker || ''}
             }
 
             this.spawnParticles();
-            this.showInspector(this.nodes[0]);
+            this.selectedNode = null;
+            this.inspector?.classList.add('hidden');
+            this.draw();
             this.startAnimation();
         }
 
@@ -2021,7 +1934,7 @@ ${currentWafBundle.artifacts.docker || ''}
                     ctx.lineTo(edge.target.x, edge.target.y);
                 }
 
-                ctx.strokeStyle = isDimmed ? 'rgba(255, 255, 255, 0.03)' : (isHighlighted ? '#00ff88' : 'rgba(255, 255, 255, 0.12)');
+                ctx.strokeStyle = isDimmed ? 'rgba(255, 255, 255, 0.03)' : (isHighlighted ? '#00ff88' : 'rgba(51, 65, 85, 0.25)');
                 ctx.lineWidth = isHighlighted ? 2.2 : 1.2;
                 ctx.stroke();
             });
@@ -2101,7 +2014,7 @@ ${currentWafBundle.artifacts.docker || ''}
 
                 // Label Text
                 ctx.font = (isSelected || isHovered ? 'bold ' : '') + '10px Inter, sans-serif';
-                ctx.fillStyle = isSelected ? '#00ff88' : '#f0f4fc';
+                ctx.fillStyle = isSelected ? '#00ff88' : '#334155';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'top';
                 ctx.fillText(node.label, node.x, node.y + node.radius + 6);
@@ -2164,7 +2077,8 @@ ${currentWafBundle.artifacts.docker || ''}
             this.initEvents();
             this.resize();
             window.addEventListener('resize', () => {
-                this.resize();
+                if (this.lastReport) this.buildFromReport(this.lastReport, this.lastUrl);
+                else this.resize();
                 this.markDirty();
             });
         }
@@ -2329,19 +2243,19 @@ ${currentWafBundle.artifacts.docker || ''}
             if (keyFindings.length === 0) {
                 const cleanNode = {
                     id: 'node-clean',
-                    label: 'No Severe Vulnerabilities',
+                    label: 'No findings recorded',
                     type: 'vuln',
                     x: width * 0.5,
                     y: height * 0.5,
                     radius: 18,
                     color: '#00ff88',
                     glow: 'rgba(0, 255, 136, 0.4)',
-                    stage: 'Defense Verified',
-                    impact: 'All evaluated security assertions passed without critical flaw.',
+                    stage: 'Tested scope only',
+                    impact: report.coverage?.note || 'Review scan coverage before drawing conclusions.',
                     fix: 'Continue continuous integration scanning on every deployment.'
                 };
                 this.nodes.push(cleanNode);
-                this.edges.push({ source: rootNode, target: cleanNode, active: true, label: 'Secured' });
+                this.edges.push({ source: rootNode, target: cleanNode, active: true, label: 'Observed' });
                 this.showInspector(cleanNode);
             } else {
                 keyFindings.forEach((f, idx) => {
@@ -2371,71 +2285,12 @@ ${currentWafBundle.artifacts.docker || ''}
                     });
                 });
 
-                // 3. Exploitation Primitives
-                const primitives = [
-                    {
-                        id: 'prim-1',
-                        label: 'Payload Injection / Reflection',
-                        stage: 'Exploitation Primitive (Stage 2)',
-                        impact: 'Adversary bypasses client validation or executes script in victim context.',
-                        fix: 'Sanitize all dynamic inputs and apply strict Content-Security-Policy.'
-                    },
-                    {
-                        id: 'prim-2',
-                        label: 'Auth & Boundary Escalation',
-                        stage: 'Exploitation Primitive (Stage 2)',
-                        impact: 'Adversary leverages CORS / header leaks to access unauthorized resources.',
-                        fix: 'Verify Origin headers against strict whitelist and enforce token signing.'
-                    }
-                ];
-
-                const primNodes = primitives.map((p, idx) => {
-                    const pNode = {
-                        id: p.id,
-                        label: p.label,
-                        type: 'primitive',
-                        x: width * 0.65,
-                        y: height * (0.35 + idx * 0.3),
-                        radius: 17,
-                        color: '#bd00ff',
-                        glow: 'rgba(189, 0, 255, 0.5)',
-                        stage: p.stage,
-                        impact: p.impact,
-                        fix: p.fix
-                    };
-                    this.nodes.push(pNode);
-
-                    vulnNodes.forEach(vn => {
-                        this.edges.push({ source: vn, target: pNode, active: true, label: 'Enables' });
-                    });
-                    return pNode;
-                });
-
-                // 4. Final Compounded Impact Node
-                const impactNode = {
-                    id: 'impact-1',
-                    label: 'Compounded Threat Impact',
-                    type: 'impact',
-                    x: width * 0.88,
-                    y: height * 0.5,
-                    radius: 22,
-                    color: '#ff3366',
-                    glow: 'rgba(255, 51, 102, 0.6)',
-                    stage: 'Final Attack Vector Objective (Stage 3)',
-                    impact: 'Full compromise of client trust, potential session hijacking, or unauthorized data exfiltration.',
-                    fix: 'Apply Defense-in-Depth: HttpOnly session tokens, Strict CSP, and Least-Privilege CORS.'
-                };
-                this.nodes.push(impactNode);
-
-                primNodes.forEach(pn => {
-                    this.edges.push({ source: pn, target: impactNode, active: true, label: 'Compromises' });
-                });
-
                 // Auto-show inspector for the most critical/high node
                 this.showInspector(vulnNodes[0]);
             }
 
             this.spawnParticles();
+            this.draw();
             this.startAnimation();
         }
 
@@ -2541,7 +2396,7 @@ ${currentWafBundle.artifacts.docker || ''}
                 ctx.beginPath();
                 ctx.moveTo(edge.source.x, edge.source.y);
                 ctx.lineTo(edge.target.x, edge.target.y);
-                ctx.strokeStyle = isHighlighted ? 'rgba(0, 255, 136, 0.45)' : 'rgba(255, 255, 255, 0.12)';
+                ctx.strokeStyle = isHighlighted ? 'rgba(0, 255, 136, 0.45)' : 'rgba(51, 65, 85, 0.25)';
                 ctx.lineWidth = isHighlighted ? 2.5 : 1.8;
                 ctx.stroke();
 
@@ -2619,7 +2474,7 @@ ${currentWafBundle.artifacts.docker || ''}
 
                 // Text label
                 ctx.font = (isSelected || isHovered ? 'bold ' : '') + '11px Inter, sans-serif';
-                ctx.fillStyle = isSelected ? '#00ff88' : '#f0f4fc';
+                ctx.fillStyle = isSelected ? '#00ff88' : '#334155';
                 ctx.textAlign = 'center';
                 ctx.fillText(node.label, node.x, node.y + node.radius + 14);
 
@@ -2682,9 +2537,9 @@ ${currentWafBundle.artifacts.docker || ''}
         initEvents() {
             if (this.filterGroup) {
                 this.filterGroup.addEventListener('click', (e) => {
-                    const btn = e.target.closest('.terminal-filter-btn');
+                    const btn = e.target.closest('.terminal-filter-btn, .console-filter-btn, .trend-filter-btn');
                     if (!btn) return;
-                    this.filterGroup.querySelectorAll('.terminal-filter-btn').forEach(b => b.classList.remove('active'));
+                    this.filterGroup.querySelectorAll('.terminal-filter-btn, .console-filter-btn, .trend-filter-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     this.currentFilter = btn.dataset.filter || 'all';
                     this.render();
@@ -2746,8 +2601,8 @@ ${currentWafBundle.artifacts.docker || ''}
             const div = document.createElement('div');
             const agent = log.agent || 'SYSTEM';
             const level = log.level || 'info';
-            div.className = `terminal-line agent-${agent} level-${level}`;
-            div.innerHTML = `<span class="t-stamp">[${log.time || '00:00:00'}]</span> <span class="t-agent">[${agent}]</span> <span class="t-msg">${escapeHtml(log.text || '')}</span>`;
+            div.className = `log-line terminal-line agent-${agent} level-${level}`;
+            div.innerHTML = `<span class="t-stamp log-time">[${log.time || '00:00:00'}]</span> <span class="t-agent log-agent">[${agent}]</span> <span class="t-msg log-msg">${escapeHtml(log.text || '')}</span>`;
             return div;
         }
 
@@ -2756,7 +2611,7 @@ ${currentWafBundle.artifacts.docker || ''}
             this.output.innerHTML = '';
             const filtered = this.logs.filter(l => this.matchesFilter(l));
             if (filtered.length === 0) {
-                this.output.innerHTML = '<div class="terminal-line system"><span class="t-stamp">[--:--:--]</span> <span class="t-msg" style="color: var(--text-muted);">No log entries match the selected filter.</span></div>';
+                this.output.innerHTML = '<div class="terminal-line system"><span class="t-stamp log-time">[--:--:--]</span> <span class="t-msg log-msg" style="color: var(--text-muted);">No log entries match the selected filter.</span></div>';
                 return;
             }
 
@@ -2893,9 +2748,9 @@ ${currentWafBundle.artifacts.docker || ''}
             const metricToggles = document.getElementById('trend-metric-toggles');
             if (metricToggles) {
                 metricToggles.addEventListener('click', (e) => {
-                    const btn = e.target.closest('.terminal-filter-btn');
+                    const btn = e.target.closest('.terminal-filter-btn, .console-filter-btn, .trend-filter-btn');
                     if (!btn) return;
-                    metricToggles.querySelectorAll('.terminal-filter-btn').forEach(b => b.classList.remove('active'));
+                    metricToggles.querySelectorAll('.terminal-filter-btn, .console-filter-btn, .trend-filter-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     this.activeMetric = btn.dataset.metric || 'overall';
                     this.draw();
@@ -2968,12 +2823,11 @@ ${currentWafBundle.artifacts.docker || ''}
                 const res = await fetch('/api/scans/trends');
                 let trends = await res.json();
 
-                if (!trends || trends.length === 0) {
-                    trends = this.generateBaselineProgression(currentUrl);
-                } else if (trends.length === 1) {
-                    trends = this.augmentWithBaseline(trends[0]);
-                }
-
+                trends = Array.isArray(trends) ? trends : [];
+                if (currentUrl) trends = trends.filter(scan => scan.url === currentUrl);
+                trends = trends.filter(scan => Number.isFinite(scan.score)).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                this.hoveredPoint = null;
+                this.hideTooltip();
                 this.points = trends;
                 this.updateKPIs(trends);
                 this.resize();
@@ -2983,85 +2837,16 @@ ${currentWafBundle.artifacts.docker || ''}
             }
         }
 
-        generateBaselineProgression(targetUrl) {
-            const now = Date.now();
-            const host = targetUrl || window.currentScanStatus?.url || 'Target Website';
-            return [
-                {
-                    scanId: 'baseline-1',
-                    url: host,
-                    timestamp: new Date(now - 7 * 86400000).toISOString(),
-                    duration: '65.2',
-                    findingsCount: 78,
-                    score: 68,
-                    grade: 'C',
-                    gradeColor: '#ffb700',
-                    statusText: 'Moderate Risk',
-                    subscores: { headers: { score: 65 }, aiSafety: { score: 70 }, apiAuth: { score: 60 }, logic: { score: 75 } }
-                },
-                {
-                    scanId: 'baseline-2',
-                    url: host,
-                    timestamp: new Date(now - 4 * 86400000).toISOString(),
-                    duration: '72.1',
-                    findingsCount: 56,
-                    score: 82,
-                    grade: 'B',
-                    gradeColor: '#00e5ff',
-                    statusText: 'Hardened Baseline',
-                    subscores: { headers: { score: 85 }, aiSafety: { score: 85 }, apiAuth: { score: 78 }, logic: { score: 80 } }
-                },
-                {
-                    scanId: 'baseline-3',
-                    url: host,
-                    timestamp: new Date(now - 86400000).toISOString(),
-                    duration: '78.5',
-                    findingsCount: 42,
-                    score: 94,
-                    grade: 'A',
-                    gradeColor: '#00ff88',
-                    statusText: 'Fortified & Hardened',
-                    subscores: { headers: { score: 95 }, aiSafety: { score: 100 }, apiAuth: { score: 90 }, logic: { score: 88 } }
-                }
-            ];
-        }
-
-        augmentWithBaseline(latestScan) {
-            const now = new Date(latestScan.timestamp).getTime();
-            const latestScore = latestScan.score || 94;
-            return [
-                {
-                    scanId: 'baseline-1',
-                    url: latestScan.url,
-                    timestamp: new Date(now - 5 * 86400000).toISOString(),
-                    duration: '65.2',
-                    findingsCount: Math.round((latestScan.findingsCount || 42) * 1.8),
-                    score: Math.max(55, latestScore - 26),
-                    grade: 'C',
-                    gradeColor: '#ffb700',
-                    statusText: 'Initial Vulnerability Surface',
-                    subscores: { headers: { score: 65 }, aiSafety: { score: 70 }, apiAuth: { score: 60 }, logic: { score: 72 } }
-                },
-                {
-                    scanId: 'baseline-2',
-                    url: latestScan.url,
-                    timestamp: new Date(now - 2 * 86400000).toISOString(),
-                    duration: '72.1',
-                    findingsCount: Math.round((latestScan.findingsCount || 42) * 1.3),
-                    score: Math.max(70, latestScore - 12),
-                    grade: 'B',
-                    gradeColor: '#00e5ff',
-                    statusText: 'Remediation Iteration',
-                    subscores: { headers: { score: 82 }, aiSafety: { score: 88 }, apiAuth: { score: 78 }, logic: { score: 80 } }
-                },
-                latestScan
-            ];
-        }
-
         updateKPIs(trends) {
-            if (!trends || trends.length < 2) return;
-            const firstScore = trends[0].score || 70;
-            const lastScore = trends[trends.length - 1].score || 94;
+            if (!trends || trends.length < 2) {
+                const velocity = document.getElementById('kpi-velocity');
+                const status = document.getElementById('kpi-status');
+                if (velocity) velocity.textContent = '—';
+                if (status) status.textContent = trends?.length ? 'One recorded scan' : 'No recorded scans';
+                return;
+            }
+            const firstScore = trends[0].score;
+            const lastScore = trends[trends.length - 1].score;
             const delta = lastScore - firstScore;
 
             const kpiVelocity = document.getElementById('kpi-velocity');
@@ -3069,7 +2854,7 @@ ${currentWafBundle.artifacts.docker || ''}
             const timelineSummary = document.getElementById('trend-timeline-summary');
 
             if (kpiVelocity) {
-                kpiVelocity.textContent = `${delta >= 0 ? '+' : ''}${delta}% ${delta >= 0 ? '↗' : '↘'}`;
+                kpiVelocity.textContent = `${delta >= 0 ? '+' : ''}${delta} pts ${delta >= 0 ? '↗' : '↘'}`;
                 kpiVelocity.style.color = delta >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
             }
 
@@ -3078,7 +2863,7 @@ ${currentWafBundle.artifacts.docker || ''}
                     kpiStatus.textContent = 'Rapid Hardening 🚀';
                     kpiStatus.style.color = 'var(--accent-green)';
                 } else if (delta >= 0) {
-                    kpiStatus.textContent = 'Stable & Secure 🟢';
+                    kpiStatus.textContent = 'No score regression';
                     kpiStatus.style.color = 'var(--accent-green)';
                 } else {
                     kpiStatus.textContent = 'Regression Detected ⚠️';
@@ -3094,14 +2879,9 @@ ${currentWafBundle.artifacts.docker || ''}
         }
 
         getMetricValue(scan, metric) {
-            if (metric === 'overall') return scan.score ?? 90;
-            if (scan.subscores) {
-                if (metric === 'headers') return scan.subscores.headers?.score ?? 90;
-                if (metric === 'ai') return scan.subscores.aiSafety?.score ?? 95;
-                if (metric === 'api') return scan.subscores.apiAuth?.score ?? 85;
-                if (metric === 'logic') return scan.subscores.logic?.score ?? 88;
-            }
-            return scan.score ?? 90;
+            if (metric === 'overall') return scan.score ?? null;
+            const key = { headers: 'headers', ai: 'aiSafety', api: 'apiAuth', logic: 'logic' }[metric];
+            return scan.subscores?.[key]?.score ?? null;
         }
 
         draw() {
@@ -3126,18 +2906,23 @@ ${currentWafBundle.artifacts.docker || ''}
                 ctx.beginPath();
                 ctx.moveTo(padLeft, y);
                 ctx.lineTo(width - padRight, y);
-                ctx.strokeStyle = lvl === 0 ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)';
+                ctx.strokeStyle = lvl === 0 ? 'rgba(51, 65, 85, 0.25)' : 'rgba(51, 65, 85, 0.1)';
                 ctx.lineWidth = 1;
                 ctx.stroke();
 
                 ctx.font = '10px Fira Code, monospace';
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+                ctx.fillStyle = '#64748b';
                 ctx.textAlign = 'right';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(`${lvl}%`, padLeft - 8, y);
             });
 
-            if (!this.points || this.points.length === 0) return;
+            this.computedPoints = [];
+            if (!this.points?.some(scan => this.getMetricValue(scan, this.activeMetric) != null)) {
+                ctx.fillStyle = '#64748b'; ctx.textAlign = 'center'; ctx.font = '14px sans-serif';
+                ctx.fillText('No measured data for this metric', width / 2, height / 2);
+                return;
+            }
 
             // 2. Compute Coordinates
             this.computedPoints = [];
@@ -3147,6 +2932,7 @@ ${currentWafBundle.artifacts.docker || ''}
             this.points.forEach((scan, i) => {
                 const x = count > 1 ? padLeft + i * stepX : padLeft + chartW / 2;
                 const scoreVal = this.getMetricValue(scan, this.activeMetric);
+                if (scoreVal == null) return;
                 const y = padTop + chartH - (scoreVal / 100) * chartH;
 
                 this.computedPoints.push({
@@ -3253,7 +3039,7 @@ ${currentWafBundle.artifacts.docker || ''}
                 ctx.fill();
 
                 ctx.font = '10px Inter, sans-serif';
-                ctx.fillStyle = isHovered ? '#00ff88' : 'rgba(255, 255, 255, 0.45)';
+                ctx.fillStyle = isHovered ? '#00ff88' : '#64748b';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'top';
                 const dateObj = new Date(p.data.timestamp);
@@ -3328,11 +3114,11 @@ ${currentWafBundle.artifacts.docker || ''}
 
             // Update Historical Score Trends
             if (window.trendEngine) {
-                window.trendEngine.updateTrends();
+                window.trendEngine.updateTrends(window.currentScanStatus?.url);
             }
 
             // Automatically auto-load the most recent scan if dashboard is idle
-            if (scans.length > 0 && resultsSection.classList.contains('hidden')) {
+            if (scans.length > 0 && !startBtn.disabled && resultsSection.classList.contains('hidden')) {
                 window.loadScanById(scans[0].scanId);
             }
         } catch (e) {
@@ -3356,8 +3142,9 @@ ${currentWafBundle.artifacts.docker || ''}
             if (!reportData) return;
             displayResults({
                 scanId: scanId,
-                url: reportData.meta?.target || 'https://target-app.com',
-                duration: reportData.meta?.duration ? (reportData.meta.duration / 1000).toFixed(1) : '60.0',
+                url: reportData.meta?.target || 'Unknown target',
+                status: reportData.coverage?.status === 'complete' ? 'completed' : 'partial',
+                duration: reportData.meta?.duration ? (reportData.meta.duration / 1000).toFixed(1) : '0',
                 report: reportData,
                 reportHtmlUrl: `/vibe-shield-reports/${scanId}/report.html`
             });
@@ -3473,7 +3260,7 @@ ${currentWafBundle.artifacts.docker || ''}
                             this.statusPill.textContent = `${vulnerableCount} VULNERABILITIES DETECTED`;
                         } else {
                             this.statusPill.className = 'badge badge-secondary';
-                            this.statusPill.textContent = '10 VECTORS DEFENDED';
+                            this.statusPill.textContent = 'NO DEFENSE VERIFICATION';
                         }
                     }
                     this.render();
@@ -3495,7 +3282,7 @@ ${currentWafBundle.artifacts.docker || ''}
                 const sevClass = 'pill-' + (vector.severity || 'high');
                 const statusBadgeHtml = isVuln
                     ? `<span class="badge badge-status-vulnerable">⚠️ ${vector.findingsCount || 1} VULN DETECTED</span>`
-                    : `<span class="badge badge-status-defended">🛡️ GUARDRAIL ACTIVE</span>`;
+                    : `<span class="badge badge-status-defended">NOT VERIFIED</span>`;
 
                 card.innerHTML = `
                     <div class="matrix-card-head">
@@ -3512,7 +3299,7 @@ ${currentWafBundle.artifacts.docker || ''}
                         <span style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);">${vector.attackPrimitives?.length || 4} Primitives</span>
                     </div>
                     <button type="button" class="btn-sim-trigger" data-vector-id="${vector.id}">
-                        ⚡ Simulate Attack & Guardrail ↗
+                        View illustrative scenario ↗
                     </button>
                 `;
 
@@ -3536,7 +3323,7 @@ ${currentWafBundle.artifacts.docker || ''}
             this.threatSev.className = `badge badge-${vector.severity || 'high'}`;
             
             const isVuln = vector.status === 'VULNERABLE';
-            this.threatStatus.textContent = isVuln ? '⚠️ VULNERABILITY DETECTED' : '🛡️ GUARDRAIL ACTIVE';
+            this.threatStatus.textContent = isVuln ? '⚠️ VULNERABILITY DETECTED' : 'NOT VERIFIED';
             this.threatStatus.className = `badge ${isVuln ? 'badge-status-vulnerable' : 'badge-status-defended'}`;
             this.threatDesc.textContent = vector.description;
             this.categoryLabel.textContent = vector.simulation?.category || 'Adversarial Probe';
@@ -3738,6 +3525,7 @@ ${currentWafBundle.artifacts.docker || ''}
         }
 
         init() {
+            document.getElementById('nav-report-btn')?.addEventListener('click', () => this.openReport());
             if (this.openHeaderBtn) {
                 this.openHeaderBtn.addEventListener('click', () => this.openModal());
             }
@@ -4038,7 +3826,7 @@ runSecurityGate();`;
             this.testResultBox.innerHTML = '<span style="color:var(--accent-cyan)">[WEBHOOK] Dispatching automated test payload to /api/webhook/scan...</span>';
 
             const gate = this.getGateConfig();
-            const targetUrl = document.getElementById('target-url')?.value?.trim() || 'https://vibe-shield-demo.app';
+            const targetUrl = document.getElementById('target-url')?.value?.trim() || '';
 
             try {
                 const res = await fetch('/api/webhook/scan', {
@@ -4082,7 +3870,7 @@ runSecurityGate();`;
 
     class ExecutiveReportManager {
         constructor() {
-            this.modal = document.getElementById('executive-report-modal');
+            this.modal = document.getElementById('executive-report-panel');
             this.openHeaderBtn = document.getElementById('open-exec-modal-header-btn');
             this.openResultsBtn = document.getElementById('open-exec-report-results-btn');
             this.closeBtn = document.getElementById('close-exec-modal-btn');
@@ -4095,6 +3883,7 @@ runSecurityGate();`;
         }
 
         init() {
+            document.getElementById('nav-report-btn')?.addEventListener('click', () => this.openReport());
             if (this.openHeaderBtn) {
                 this.openHeaderBtn.addEventListener('click', () => this.openReport());
             }
@@ -4123,7 +3912,7 @@ runSecurityGate();`;
 
         async openReport() {
             this.modal?.classList.remove('hidden');
-            const scanId = currentScanId || 'latest';
+            const scanId = window.currentScanId || currentScanId;
             await this.loadExecutiveData(scanId);
         }
 
@@ -4132,166 +3921,37 @@ runSecurityGate();`;
         }
 
         async loadExecutiveData(scanId) {
+            this.reportData = null;
+            if (this.printBtn) this.printBtn.disabled = true;
+            if (this.copyMdBtn) this.copyMdBtn.disabled = true;
+            for (const id of ['url', 'date', 'duration', 'score']) document.getElementById(`exec-meta-${id}`).textContent = '—';
+            for (const severity of ['critical', 'high', 'medium', 'low']) document.getElementById(`exec-count-${severity}`).textContent = '—';
+            const detail = document.getElementById('exec-findings-detail');
+            detail.textContent = scanId ? 'Loading report…' : 'Run a scan before generating a report.';
+            if (!scanId) return;
             try {
-                const targetId = scanId || window.currentScanId || 'latest';
-                const res = await fetch(`/api/scan/${targetId}/executive`);
-                if (res.ok) {
-                    this.reportData = await res.json();
-                    this.renderReport(this.reportData);
-                    return;
-                }
+                const res = await fetch(`/api/scan/${encodeURIComponent(scanId)}/executive`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Report unavailable');
+                this.reportData = data;
+                this.renderReport(data);
+                if (this.printBtn) this.printBtn.disabled = false;
+                if (this.copyMdBtn) this.copyMdBtn.disabled = false;
             } catch (err) {
-                console.warn('Executive report API fetch warning, using client fallback:', err);
+                detail.textContent = err.message;
             }
-
-            // Fallback: build executive report from client-side state
-            const r = window.currentScanReport || {};
-            const s = window.currentScanStatus || {};
-            const summary = r.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
-            
-            this.reportData = {
-                metadata: {
-                    reportTitle: 'VIBE SHIELD — Executive Security Audit Dossier',
-                    targetUrl: s.url || r.meta?.target || 'Target Domain',
-                    scannedAt: r.meta?.scannedAt || new Date().toISOString(),
-                    durationSeconds: s.duration || (r.meta?.duration ? (r.meta.duration / 1000).toFixed(1) : '12.4'),
-                    scannerVersion: '1.0.0',
-                    classification: 'CONFIDENTIAL / EXECUTIVE STAKEHOLDER DISTRIBUTION'
-                },
-                posture: {
-                    grade: r.posture?.grade || 'A+',
-                    score: r.posture?.score || 100,
-                    gradeColor: '#00ff88',
-                    statusText: 'Fortified & Hardened',
-                    summary,
-                    riskStatement: 'Autonomous multi-agent compound threat analysis completed.'
-                },
-                complianceReadiness: {
-                    owaspTop10: '100% Compliant',
-                    owaspLlmTop10: 'Guardrails Active',
-                    soc2Security: 'Audit Ready',
-                    gdprDataPrivacy: 'Compliant',
-                    hipaaSecurityRule: 'Compliant'
-                },
-                roadmap: [],
-                topFindings: (r.findings || []).slice(0, 8)
-            };
-            this.renderReport(this.reportData);
         }
 
         renderReport(data) {
-            if (!data) return;
-
-            // Metadata
-            document.getElementById('exec-meta-url').textContent = data.metadata?.targetUrl || 'N/A';
-            document.getElementById('exec-meta-date').textContent = new Date(data.metadata?.scannedAt || Date.now()).toUTCString();
-            document.getElementById('exec-meta-duration').textContent = (data.metadata?.durationSeconds || '0') + 's';
-
-            // Posture
-            const p = data.posture || {};
-            const gradeEl = document.getElementById('exec-grade-val');
-            const scoreEl = document.getElementById('exec-score-val');
-            const circleEl = document.getElementById('exec-score-circle');
-            const pillEl = document.getElementById('exec-status-pill');
-            const riskStmtEl = document.getElementById('exec-risk-statement');
-
-            if (gradeEl) gradeEl.textContent = p.grade || 'A';
-            if (scoreEl) scoreEl.textContent = `${p.score || 92}/100`;
-            if (gradeEl && p.gradeColor) gradeEl.style.color = p.gradeColor;
-            if (circleEl && p.gradeColor) {
-                circleEl.style.borderColor = p.gradeColor;
-                circleEl.style.boxShadow = `0 0 25px ${p.gradeColor}40`;
-            }
-            if (pillEl) {
-                pillEl.textContent = p.statusText || 'PROTECTED';
-                if (p.gradeColor) {
-                    pillEl.style.color = p.gradeColor;
-                    pillEl.style.borderColor = `${p.gradeColor}60`;
-                }
-            }
-            if (riskStmtEl) riskStmtEl.textContent = p.riskStatement || '';
-
-            // Subscores
-            const subs = p.subscores || {};
-            const updateSub = (id, val) => {
-                const v = val ?? 90;
-                const txt = document.getElementById(`exec-sub-${id}`);
-                const bar = document.getElementById(`exec-bar-${id}`);
-                if (txt) txt.textContent = `${v}%`;
-                if (bar) bar.style.width = `${v}%`;
-            };
-
-            updateSub('headers', subs.headersQuality ?? subs.apiSecurity);
-            updateSub('ai', subs.aiPromptSafety ?? subs.aiSafety);
-            updateSub('api', subs.apiAuthHardening ?? subs.authentication);
-            updateSub('logic', subs.logicHygiene ?? subs.businessLogic);
-
-            // Severity counts
-            const sum = p.summary || {};
-            document.getElementById('exec-crit-count').textContent = sum.critical ?? 0;
-            document.getElementById('exec-high-count').textContent = sum.high ?? 0;
-            document.getElementById('exec-med-count').textContent = sum.medium ?? 0;
-            document.getElementById('exec-low-count').textContent = sum.low ?? 0;
-
-            // Compliance
-            const comp = data.complianceReadiness || {};
-            if (document.getElementById('exec-comp-owasp')) document.getElementById('exec-comp-owasp').textContent = comp.owaspTop10 || '✔ 94% Compliant';
-            if (document.getElementById('exec-comp-llm')) document.getElementById('exec-comp-llm').textContent = comp.owaspLlmTop10 || '✔ 98% Defended';
-            if (document.getElementById('exec-comp-soc2')) document.getElementById('exec-comp-soc2').textContent = comp.soc2Security || '✔ Ready for Audit';
-            if (document.getElementById('exec-comp-gdpr')) document.getElementById('exec-comp-gdpr').textContent = comp.gdprDataPrivacy || '✔ Compliant';
-            if (document.getElementById('exec-comp-hipaa')) document.getElementById('exec-comp-hipaa').textContent = comp.hipaaSecurityRule || '✔ Compliant';
-
-            // Roadmap
-            const roadmapContainer = document.getElementById('exec-roadmap-container');
-            if (roadmapContainer) {
-                roadmapContainer.innerHTML = '';
-                (data.roadmap || []).forEach(item => {
-                    const badgeClass = item.status === 'Urgent' ? 'badge-critical' : item.status === 'In Progress' ? 'badge-high' : 'badge-low';
-                    const div = document.createElement('div');
-                    div.className = 'exec-roadmap-item';
-                    div.innerHTML = `
-                        <div class="roadmap-left">
-                            <span class="roadmap-phase">${escapeHtml(item.phase)}</span>
-                            <span class="roadmap-action">${escapeHtml(item.action)}</span>
-                            <span style="font-size:10px; color:var(--text-muted); margin-top:2px;">Owner: ${escapeHtml(item.owner)}</span>
-                        </div>
-                        <span class="roadmap-badge ${badgeClass}">${escapeHtml(item.status)}</span>
-                    `;
-                    roadmapContainer.appendChild(div);
-                });
-            }
-
-            // Top Findings Table
-            const tbody = document.getElementById('exec-findings-tbody');
-            if (tbody) {
-                tbody.innerHTML = '';
-                const findings = data.topFindings || [];
-                if (findings.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--accent-green);">✔ No high or critical security findings identified. Target application demonstrates robust hygiene.</td></tr>';
-                } else {
-                    findings.forEach(f => {
-                        const tr = document.createElement('tr');
-                        const sevColor = f.severity === 'CRITICAL' ? '#ff0055' : f.severity === 'HIGH' ? '#ff6d00' : '#ffd700';
-                        tr.innerHTML = `
-                            <td>
-                                <div style="font-weight:700; color:${sevColor}; font-size:11px;">${escapeHtml(f.severity)}</div>
-                                <div style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted); margin-top:2px;">CVSS: ${f.cvssScore ?? '7.5'}</div>
-                            </td>
-                            <td>
-                                <strong style="color:var(--text-primary); display:block; margin-bottom:3px;">${escapeHtml(f.title)}</strong>
-                                <span style="font-size:10px; color:var(--text-muted);">${escapeHtml(f.description)}</span>
-                            </td>
-                            <td>
-                                <span style="font-size:11px; color:#ff99aa;">${escapeHtml(f.impact)}</span>
-                            </td>
-                            <td>
-                                <span style="font-size:11px; color:var(--accent-green);">${escapeHtml(f.remediation)}</span>
-                            </td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                }
-            }
+            const meta = data.metadata || {};
+            const posture = data.posture || {};
+            document.getElementById('exec-meta-url').textContent = meta.targetUrl || '—';
+            document.getElementById('exec-meta-date').textContent = new Date(meta.scannedAt).toLocaleString();
+            document.getElementById('exec-meta-duration').textContent = `${meta.durationSeconds}s`;
+            document.getElementById('exec-meta-score').textContent = posture.score == null ? 'Not scored' : `${posture.score}/100 (${posture.grade})`;
+            for (const severity of ['critical', 'high', 'medium', 'low']) document.getElementById(`exec-count-${severity}`).textContent = posture.summary?.[severity] ?? 0;
+            document.getElementById('exec-findings-detail').innerHTML = `<p class="report-scope">${escapeHtml(posture.riskStatement)}</p>` +
+                (data.topFindings?.length ? data.topFindings.map(f => `<article class="report-finding"><span class="report-severity">${escapeHtml(f.severity)}</span><h3>${escapeHtml(f.title)}</h3><p>${escapeHtml(f.description)}</p><p><strong>Recommended fix:</strong> ${escapeHtml(f.remediation)}</p></article>`).join('') : '<p>No findings recorded at the selected threshold. Review scan coverage.</p>');
         }
 
         async copyMarkdownBriefing() {
@@ -4375,7 +4035,7 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
             const summary = report.dedupSummary || report.summary || {};
             const total = summary.total || 0;
             const critical = summary.critical || 0;
-            const score = status.score || status.report?.score || window.currentScoreData?.overallScore || '—';
+            const score = status.score ?? status.report?.score ?? window.currentScoreData?.overallScore ?? '—';
             const grade = status.grade || status.report?.grade || window.currentScoreData?.grade || '—';
             this.addMessage('bot',
                 `Scan complete! 🔍 Found **${total} findings** (${critical} critical) on ${status.url}.\n\n` +
@@ -4445,7 +4105,7 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
             const report = this.scanData?.report || {};
             const findings = report.findings || [];
             const summary = report.dedupSummary || report.summary || {};
-            const score = this.scanData?.score || report.score || window.currentScoreData?.overallScore || '—';
+            const score = this.scanData?.score ?? report.score ?? window.currentScoreData?.overallScore ?? '—';
             const grade = this.scanData?.grade || report.grade || window.currentScoreData?.grade || '—';
             const url = this.scanData?.url || 'the target';
 
@@ -4494,7 +4154,7 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
 
             // What vulnerabilities
             if (query.includes('vulnerabilit') || query.includes('finding') || query.includes('issue') || query.includes('bug')) {
-                if (!findings.length) return `No vulnerabilities found on ${url}. The site appears clean!`;
+                if (!findings.length) return `No findings were recorded in the tested scope on ${url}. This does not establish that the site is vulnerability-free.`;
                 return `Found **${summary.total}** total findings:\n• ${summary.critical || 0} Critical\n• ${summary.high || 0} High\n• ${summary.medium || 0} Medium\n• ${summary.low || 0} Low\n\nTop issues:\n${findings.slice(0, 4).map(f => `• **[${f.severity?.toUpperCase()}]** ${f.title}`).join('\n')}`;
             }
 
@@ -4509,7 +4169,7 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
             if (query.includes('header') || query.includes('csp') || query.includes('hsts')) {
                 const hdrs = findings.filter(f => (f.title || '').toLowerCase().includes('header') || (f.title || '').toLowerCase().includes('csp'));
                 if (hdrs.length) return `Found **${hdrs.length}** header-related issues. Recommended headers to add:\n• Content-Security-Policy\n• Strict-Transport-Security\n• X-Frame-Options: DENY\n• X-Content-Type-Options: nosniff`;
-                return 'All security headers look good! ✅';
+                return 'No header findings recorded. Check whether the security module ran and review its coverage.';
             }
 
             // Summary

@@ -17,6 +17,7 @@ export const DEFAULT_SAFETY_MODE = 'safe-active';
 
 const DEFAULTS = {
     target_url: null,
+    project_root: null,
     credentials: [],
     modules_enabled: ['qa'],
     severity_threshold: 'low',
@@ -74,7 +75,7 @@ const SCAN_PROFILES = {
 
 // ── Lightweight config schema (for validation) ──────────────
 const KNOWN_TOP_LEVEL_KEYS = new Set([
-    'target_url', 'credentials', 'modules_enabled', 'severity_threshold',
+    'target_url', 'project_root', 'credentials', 'modules_enabled', 'severity_threshold',
     'halt_on_critical', 'prod_safe', 'notify_webhook', 'safety_mode',
     'crawler', 'viewports', 'auth', 'business_context', 'output_dir',
     'llm', '_profile', '_authManager',
@@ -273,6 +274,7 @@ export function loadConfig(cliOptions = {}) {
     }
 
     // CLI overrides (take priority over profiles)
+    if (cliOptions.projectDir) config.project_root = path.resolve(cliOptions.projectDir);
     if (cliOptions.targetUrl) config.target_url = cliOptions.targetUrl;
     if (cliOptions.severity) config.severity_threshold = cliOptions.severity;
     if (cliOptions.output) config.output_dir = cliOptions.output;

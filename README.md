@@ -849,3 +849,43 @@ Every VIBE SHIELD scan generates a self-contained **HTML report** at `vibe-shiel
 **Website:** [vibe-shield](https://vibe-shield)  
 **npm:** [vibe-shield](https://www.npmjs.com/package/vibe-shield)  
 **GitHub:** [Aaravkhanal/vibe-shield](https://github.com/Aaravkhanal/vibe-shield)
+
+### Scan coverage and troubleshooting
+
+Each web scan writes to its own scan-ID directory. Live progress comes from scanner
+lifecycle events; reports and CI gates use that exact scan's output. A failed or
+incomplete scan has no security grade. Legacy reports without coverage metadata
+are shown as unscored; run a new scan to obtain a coverage-aware result.
+
+“No findings” describes the selected modules, discovered pages and severity
+threshold. It is not proof that a website is vulnerability-free. Inspect module
+errors and coverage in the report, particularly for login-protected pages or
+unavailable targets. Unselected/unassessed categories display “Not assessed”.
+Historical charts contain recorded scans for the selected URL, without synthetic
+baselines. AI scenarios are illustrative and do not verify deployed guardrails or
+regulatory compliance.
+
+Dependency auditing needs the target application's source directory; website
+scans no longer inspect VIBE SHIELD's own dependencies:
+
+```bash
+node src/cli.js scan http://localhost:8080 --project-dir /path/to/target-app
+```
+
+The web server binds to `127.0.0.1` by default. Set `HOST` explicitly when a remote
+binding is needed, behind appropriate access controls. `VIBE_SHIELD_REPORTS_DIR`
+can override the report storage directory. The HTML report includes a Print /
+Save PDF control; the dashboard's PDF Report panel supports printing too.
+
+### Regression checks
+
+```bash
+npm test
+npx playwright install chromium
+npm run test:browser
+```
+
+The browser suite uses local fixtures and temporary report storage. It checks
+executed XSS versus escaped input, SQL error detection, the page-budget boundary,
+concurrent report isolation, SSE updates, failed scan gates, report generation,
+chart controls and mobile layout. It does not probe third-party websites.

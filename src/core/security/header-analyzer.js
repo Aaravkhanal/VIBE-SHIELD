@@ -20,12 +20,12 @@ export class HeaderAnalyzer {
             if (typeof page.status !== 'number') continue;
 
             // Only analyze headers once per origin
-            const origin = this._getOrigin(page.url);
+            const origin = page.url;
             if (analyzedOrigins.has(origin)) continue;
             analyzedOrigins.add(origin);
 
             try {
-                const headers = await this._fetchHeaders(page.url);
+                const headers = page.headers || await this._fetchHeaders(page.url);
                 if (headers) {
                     this._checkCSP(headers, page.url);
                     this._checkHSTS(headers, page.url);

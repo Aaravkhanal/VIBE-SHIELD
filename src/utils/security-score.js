@@ -4,6 +4,10 @@
  */
 
 export function calculateSecurityScore(report) {
+    if (!report || report.coverage?.status !== 'complete' || !(report.surfaceInventory?.totalPages > 0)) {
+        return { overallScore: null, grade: 'N/A', gradeColor: '#64748b', statusText: 'Insufficient scan coverage',
+            subCategories: Object.fromEntries(['headers', 'aiSafety', 'apiAuth', 'logic'].map(key => [key, { score: null, issues: 0 }])), badgeMarkdown: '', badgeHtml: '' };
+    }
     const summary = report.dedupSummary || report.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
     const findings = report.findings || [];
 
@@ -24,11 +28,11 @@ export function calculateSecurityScore(report) {
     if (overallScore >= 97 && summary.critical === 0 && summary.high === 0) {
         grade = 'A+';
         gradeColor = '#00ff88'; // Neon Green
-        statusText = 'Fortified & Hardened';
+        statusText = 'No high-severity findings in tested scope';
     } else if (overallScore >= 90 && summary.critical === 0 && summary.high === 0) {
         grade = 'A';
         gradeColor = '#00ff88';
-        statusText = 'Excellent Defense Posture';
+        statusText = 'Low observed risk in tested scope';
     } else if (overallScore >= 80 && summary.critical === 0) {
         grade = 'B';
         gradeColor = '#00e5ff'; // Cyan
@@ -76,6 +80,12 @@ export function calculateSecurityScore(report) {
         }
     });
 
+    const moduleKeys = { headers: 'security', aiSafety: 'ai', apiAuth: 'api', logic: 'logic' };
+    for (const [key, module] of Object.entries(moduleKeys)) {
+        const agentName = 'VIBE-SHIELD-' + ({ security: 'SEC' }[module] || module.toUpperCase());
+        if (!report.meta?.modules?.includes(module) || report.agents?.[agentName]?.assessment === 'not_assessed') subCategories[key].score = null;
+    }
+
     const badgeMarkdown = `[![VIBE SHIELD Security Grade](https://img.shields.io/badge/VIBE_SHIELD-Grade_${encodeURIComponent(grade)}_${overallScore}%2F100-${gradeColor.replace('#', '')}?style=for-the-badge&logo=shield)](https://github.com/Aaravkhanal/VIBE-SHIELD)`;
     const badgeHtml = `<a href="https://github.com/Aaravkhanal/VIBE-SHIELD"><img src="https://img.shields.io/badge/VIBE_SHIELD-Grade_${encodeURIComponent(grade)}_${overallScore}%2F100-${gradeColor.replace('#', '')}?style=for-the-badge&logo=shield" alt="VIBE SHIELD Security Grade" /></a>`;
 
@@ -91,7 +101,9 @@ export function calculateSecurityScore(report) {
 }
 
 export function generateSvgBadge(grade, score, color) {
-    const cleanColor = color || '#00ff88';
+    const cleanColor = /^#[0-9a-f]{6}$/i.test(color || '') ? color : '#64748b';
+    grade = /^(A\+|[A-F]|N\/A)$/.test(grade) ? grade : 'N/A';
+    score = score != null && Number.isFinite(Number(score)) ? Math.max(0, Math.min(100, Number(score))) : '—';
     return `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="36" viewBox="0 0 220 36" role="img" aria-label="VIBE SHIELD: Grade ${grade}">
   <defs>
     <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">

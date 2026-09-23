@@ -32,6 +32,7 @@ export class APIAgent extends BaseAgent {
         // API/auth flow verification sends live requests, so it requires at
         // least safe-active. In passive mode it is skipped.
         if (!allows(config, 'safe-active')) {
+            this.assessment = 'not_assessed';
             this._log(`API & auth flow verification skipped — requires active probing (current: ${getSafetyMode(config)} mode)`);
             this.progress('complete', 'API testing skipped (passive mode)', 100);
             return;

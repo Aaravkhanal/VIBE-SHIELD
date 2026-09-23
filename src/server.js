@@ -3,7 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
-import { nanoid } from 'nanoid';
+import { ReportGenerator } from './reporting/report-generator.js';
+import { applyScanEvent, completeScan, validateScanRequest } from './utils/scan-state.js';
+import { randomId } from './utils/id.js';
 import { generateAutoPatch } from './utils/patch-generator.js';
 import { calculateSecurityScore, generateSvgBadge } from './utils/security-score.js';
 import { calculateCvss, parseCvssVector, inferCvssForFinding } from './utils/cvss-calculator.js';
@@ -14,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
-const REPORTS_DIR = path.join(ROOT_DIR, 'vibe-shield-reports');
+const REPORTS_DIR = process.env.VIBE_SHIELD_REPORTS_DIR ? path.resolve(process.env.VIBE_SHIELD_REPORTS_DIR) : path.join(ROOT_DIR, 'vibe-shield-reports');
 
 const PORT = process.env.PORT || 3000;
 
@@ -25,7 +27,7 @@ const API_KEY_FILE = path.join(DATA_DIR, 'api-key.json');
 function ensureApiKey() {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     if (!fs.existsSync(API_KEY_FILE)) {
-        const key = 'vs_' + nanoid(40);
+        const key = 'vs_' + randomId(40);
         fs.writeFileSync(API_KEY_FILE, JSON.stringify({ key, createdAt: new Date().toISOString() }));
         console.log(`\n🔑 VIBE SHIELD API Key generated. Manage it in Settings.`);
         return key;
@@ -36,7 +38,7 @@ function ensureApiKey() {
 let VIBE_API_KEY = ensureApiKey();
 
 function regenerateApiKey() {
-    VIBE_API_KEY = 'vs_' + nanoid(40);
+    VIBE_API_KEY = 'vs_' + randomId(40);
     fs.writeFileSync(API_KEY_FILE, JSON.stringify({ key: VIBE_API_KEY, createdAt: new Date().toISOString() }));
     return VIBE_API_KEY;
 }
@@ -81,6 +83,7 @@ function broadcastScanProgress(scanId, data) {
     for (const client of clients) {
         try {
             client.write(payload);
+            if (data.completed) client.end();
         } catch (err) {
             clients.delete(client);
         }
@@ -123,6 +126,7 @@ function initScanHistoryFromDisk() {
                 }
             }
         }
+        scanHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     } catch (err) {
         console.error('Error reading scan history from disk:', err);
     }
@@ -161,7 +165,10 @@ const server = http.createServer((req, res) => {
     const pathname = parsedUrl.pathname;
 
     // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Cross-origin access to this local scanner is not allowed.' }));
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -178,6 +185,7 @@ const server = http.createServer((req, res) => {
     if (pathname === '/styles.css') {
         return serveStaticFile(res, path.join(PUBLIC_DIR, 'styles.css'), 'text/css');
     }
+    if (pathname === '/security-score.js') return serveStaticFile(res, path.join(__dirname, 'utils/security-score.js'), 'text/javascript');
     if (pathname === '/app.js') {
         return serveStaticFile(res, path.join(PUBLIC_DIR, 'app.js'), 'text/javascript');
     }
@@ -186,21 +194,20 @@ const server = http.createServer((req, res) => {
     if (pathname.startsWith('/vibe-shield-reports/')) {
         const relativeReportPath = pathname.replace('/vibe-shield-reports/', '');
         const fullReportPath = path.join(REPORTS_DIR, relativeReportPath);
-        if (fs.existsSync(fullReportPath) && fullReportPath.startsWith(REPORTS_DIR)) {
+        if (fs.existsSync(fullReportPath) && fullReportPath.startsWith(REPORTS_DIR + path.sep) && fs.statSync(fullReportPath).isFile()) {
             return serveStaticFile(res, fullReportPath, getContentType(fullReportPath));
         }
 
-        // On-the-fly HTML report generation fallback if report.html is missing
+        // Only regenerate the exact HTML report; never substitute another artifact.
         const parts = relativeReportPath.split('/');
         const scanId = parts[0];
-        if (scanId && scanId !== 'null' && scanId !== 'undefined') {
+        if (/^[\w-]+$/.test(scanId) && parts.length === 2 && parts[1] === 'report.html') {
             const scanDir = path.join(REPORTS_DIR, scanId);
             const reportJsonPath = path.join(scanDir, 'report.json');
             if (fs.existsSync(reportJsonPath)) {
                 try {
                     const reportData = JSON.parse(fs.readFileSync(reportJsonPath, 'utf-8'));
-                    const generateReport = require('./reporting/report-generator');
-                    generateReport(reportData, scanDir);
+                    fs.writeFileSync(path.join(scanDir, 'report.html'), new ReportGenerator({})._generateHTML(reportData));
                     if (fs.existsSync(fullReportPath)) {
                         return serveStaticFile(res, fullReportPath, getContentType(fullReportPath));
                     }
@@ -229,7 +236,8 @@ const server = http.createServer((req, res) => {
                     targetUrl = 'https://' + targetUrl;
                 }
 
-                const scanId = nanoid(8);
+                validateScanRequest(targetUrl, modules, maxPages, safetyMode);
+                const scanId = randomId(8);
                 const startTime = Date.now();
 
                 const scanData = {
@@ -239,7 +247,6 @@ const server = http.createServer((req, res) => {
                     startTime,
                     completed: false,
                     duration: 0,
-                    authConfig: auth,
                     agents: {
                         'VIBE-SHIELD-CRAWL': { status: 'pending', message: 'Starting...' },
                         'VIBE-SHIELD-QA': { status: 'pending', message: 'Waiting for crawl...' },
@@ -277,7 +284,8 @@ const server = http.createServer((req, res) => {
                     'scan',
                     targetUrl,
                     '-m', modules.join(','),
-                    '--max-pages', maxPages,
+                    '--max-pages', String(maxPages),
+                    '--output', path.join(REPORTS_DIR, scanId),
                     '--prod-safe'
                 ];
 
@@ -305,7 +313,17 @@ const server = http.createServer((req, res) => {
                     }
                 }
 
-                const child = spawn('node', args, { cwd: ROOT_DIR });
+                args.push('--' + safetyMode);
+                const enabledAgents = ['CRAWL', ...modules.map(m => ({ security: 'SEC' }[m] || m.toUpperCase()))];
+                for (const [name, agent] of Object.entries(scanData.agents)) {
+                    if (!enabledAgents.includes(name.replace('VIBE-SHIELD-', ''))) Object.assign(agent, { status: 'skipped', message: 'Module not selected' });
+                }
+                const child = spawn(process.execPath, args, { cwd: ROOT_DIR, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+                child.on('message', event => {
+                    applyScanEvent(scanData, event);
+                    broadcastScanProgress(scanId, scanData);
+                });
+                child.on('error', err => { scanData.processError = err.message; });
 
                 child.stdout.on('data', data => {
                     const text = data.toString();
@@ -320,42 +338,7 @@ const server = http.createServer((req, res) => {
                 });
 
                 child.on('close', code => {
-                    scanData.completed = true;
-                    scanData.status = 'completed';
-                    scanData.duration = ((Date.now() - startTime) / 1000).toFixed(1);
-
-                    // Try reading latest generated report.json
-                    try {
-                        const reportDirs = fs.readdirSync(REPORTS_DIR)
-                            .filter(d => fs.statSync(path.join(REPORTS_DIR, d)).isDirectory())
-                            .sort()
-                            .reverse();
-
-                        if (reportDirs.length > 0) {
-                            const latestDir = reportDirs[0];
-                            const reportJsonPath = path.join(REPORTS_DIR, latestDir, 'report.json');
-                            if (fs.existsSync(reportJsonPath)) {
-                                const reportContent = JSON.parse(fs.readFileSync(reportJsonPath, 'utf-8'));
-                                scanData.report = reportContent;
-                                scanData.reportHtmlUrl = `/vibe-shield-reports/${latestDir}/report.html`;
-
-                                // Persist terminal logs alongside report for future inspection
-                                const terminalLogPath = path.join(REPORTS_DIR, latestDir, 'terminal.json');
-                                fs.writeFileSync(terminalLogPath, JSON.stringify(scanData.terminalLogs || [], null, 2));
-                            }
-                        }
-                    } catch (err) {
-                        console.error('Error fetching report or saving logs:', err);
-                    }
-
-                    const scoreData = scanData.report ? calculateSecurityScore(scanData.report) : { overallScore: 90, grade: 'A', gradeColor: '#00ff88', statusText: 'Protected' };
-                    scanData.score = scoreData.overallScore;
-                    scanData.grade = scoreData.grade;
-                    scanData.scoreData = scoreData;
-                    if (scanData.report) {
-                        scanData.report.score = scoreData.overallScore;
-                        scanData.report.grade = scoreData.grade;
-                    }
+                    const scoreData = completeScan(scanData, code, REPORTS_DIR);
                     if (scanHistory.length >= 50) scanHistory.pop();
                     scanHistory.unshift({
                         scanId,
@@ -378,7 +361,7 @@ const server = http.createServer((req, res) => {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ scanId, targetUrl, status: 'started' }));
             } catch (err) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err.message }));
             }
         });
@@ -394,7 +377,7 @@ const server = http.createServer((req, res) => {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*'
+            'X-Accel-Buffering': 'no'
         });
         res.write('\n'); // keep-alive ping
 
@@ -416,7 +399,9 @@ const server = http.createServer((req, res) => {
         const clientSet = scanSseClients.get(scanId);
         clientSet.add(res);
 
-        req.on('close', () => {
+        const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15000);
+        res.on('close', () => {
+            clearInterval(heartbeat);
             clientSet.delete(res);
             if (clientSet.size === 0) {
                 scanSseClients.delete(scanId);
@@ -465,7 +450,7 @@ const server = http.createServer((req, res) => {
                         scanId,
                         url: report.meta?.target || 'Unknown',
                         completed: true,
-                        status: 'completed',
+                        status: report.coverage?.status === 'complete' ? 'completed' : 'partial',
                         duration: report.meta?.duration ? (report.meta.duration / 1000).toFixed(1) : '0',
                         report,
                         reportHtmlUrl: `/vibe-shield-reports/${scanId}/report.html`
@@ -514,8 +499,8 @@ const server = http.createServer((req, res) => {
     // API: Dynamic SVG Security Badge
     if (pathname.startsWith('/api/badge') && req.method === 'GET') {
         const scanId = parsedUrl.searchParams.get('scanId') || pathname.replace('/api/badge/', '').replace('/api/badge', '');
-        let grade = 'A';
-        let score = 95;
+        let grade = 'N/A';
+        let score = null;
         let color = '#00ff88';
 
         if (scanId && fs.existsSync(path.join(REPORTS_DIR, scanId, 'report.json'))) {
@@ -597,7 +582,7 @@ const server = http.createServer((req, res) => {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(bundle));
             } catch (err) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err.message }));
             }
         });
@@ -633,7 +618,7 @@ const server = http.createServer((req, res) => {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(matrix));
             } catch (err) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err.message }));
             }
         });
@@ -658,9 +643,9 @@ const server = http.createServer((req, res) => {
                     cvss: category.cvss,
                     timestamp: new Date().toISOString(),
                     simulation: category.simulation,
-                    tokensConsumed: Math.floor(Math.random() * 120) + 85,
-                    latencyMs: Math.floor(Math.random() * 250) + 140,
-                    guardrailVerdict: 'INTERCEPTED & NEUTRALIZED',
+                    tokensConsumed: null,
+                    latencyMs: null,
+                    guardrailVerdict: 'ILLUSTRATION ONLY — no probe executed',
                     guardrailRuleApplied: category.defenseMechanisms[0],
                     remediationSnippet: `// Defense Guardrail Configuration for ${category.id} (${category.shortName})
 import { createGuardrail } from '@vibe-shield/ai-guard';
@@ -680,7 +665,7 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(simResult));
             } catch (err) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err.message }));
             }
         });
@@ -707,6 +692,7 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
 
                 const modules = payload.modules || ['qa', 'security', 'ai', 'logic', 'api'];
                 const maxPages = payload.maxPages || '25';
+                const safetyMode = payload.safetyMode || 'safe-active';
                 const isAsync = payload.async === true;
                 const auth = payload.auth || {};
                 const securityGate = {
@@ -715,7 +701,8 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                     maxHigh: payload.securityGate?.maxHigh ?? 2
                 };
 
-                const scanId = nanoid(8);
+                validateScanRequest(targetUrl, modules, maxPages, safetyMode);
+                const scanId = randomId(8);
                 const startTime = Date.now();
 
                 const scanData = {
@@ -755,6 +742,7 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                     targetUrl,
                     '-m', Array.isArray(modules) ? modules.join(',') : modules,
                     '--max-pages', String(maxPages),
+                    '--output', path.join(REPORTS_DIR, scanId),
                     '--prod-safe'
                 ];
 
@@ -768,7 +756,17 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                     if (auth.role) args.push('--auth-role', auth.role);
                 }
 
-                const child = spawn('node', args, { cwd: ROOT_DIR });
+                args.push('--' + safetyMode);
+                const enabledAgents = ['CRAWL', ...modules.map(m => ({ security: 'SEC' }[m] || m.toUpperCase()))];
+                for (const [name, agent] of Object.entries(scanData.agents)) {
+                    if (!enabledAgents.includes(name.replace('VIBE-SHIELD-', ''))) Object.assign(agent, { status: 'skipped', message: 'Module not selected' });
+                }
+                const child = spawn(process.execPath, args, { cwd: ROOT_DIR, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+                child.on('message', event => {
+                    applyScanEvent(scanData, event);
+                    broadcastScanProgress(scanId, scanData);
+                });
+                child.on('error', err => { scanData.processError = err.message; });
 
                 child.stdout.on('data', data => {
                     const text = data.toString();
@@ -782,38 +780,13 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                     broadcastScanProgress(scanId, scanData);
                 });
 
-                const onScanFinish = () => {
-                    scanData.completed = true;
-                    scanData.status = 'completed';
-                    scanData.duration = ((Date.now() - startTime) / 1000).toFixed(1);
+                const onScanFinish = (code) => {
+                    const scoreData = completeScan(scanData, code, REPORTS_DIR);
+                    const summary = scanData.report?.dedupSummary || scanData.report?.summary || {};
 
-                    try {
-                        const reportDirs = fs.readdirSync(REPORTS_DIR)
-                            .filter(d => fs.statSync(path.join(REPORTS_DIR, d)).isDirectory())
-                            .sort()
-                            .reverse();
-
-                        if (reportDirs.length > 0) {
-                            const latestDir = reportDirs[0];
-                            const reportJsonPath = path.join(REPORTS_DIR, latestDir, 'report.json');
-                            if (fs.existsSync(reportJsonPath)) {
-                                const reportContent = JSON.parse(fs.readFileSync(reportJsonPath, 'utf-8'));
-                                scanData.report = reportContent;
-                                scanData.reportHtmlUrl = `/vibe-shield-reports/${latestDir}/report.html`;
-
-                                const terminalLogPath = path.join(REPORTS_DIR, latestDir, 'terminal.json');
-                                fs.writeFileSync(terminalLogPath, JSON.stringify(scanData.terminalLogs || [], null, 2));
-                            }
-                        }
-                    } catch (err) {
-                        console.error('Webhook report processing error:', err);
-                    }
-
-                    const scoreData = scanData.report ? calculateSecurityScore(scanData.report) : { overallScore: 90, grade: 'A', gradeColor: '#00ff88', statusText: 'Protected' };
-                    const summary = scanData.report?.dedupSummary || scanData.report?.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
-                    
                     // Evaluate CI/CD security gate
                     const violations = [];
+                    if (scanData.status !== 'completed' || scoreData.overallScore === null) violations.push(scanData.failureReason || 'Scan incomplete; security gate cannot pass.');
                     if (scoreData.overallScore < securityGate.minScore) {
                         violations.push(`Security Score (${scoreData.overallScore}) fell below minimum threshold (${securityGate.minScore})`);
                     }
@@ -847,7 +820,7 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                     return {
                         scanId,
                         targetUrl,
-                        status: 'completed',
+                        status: scanData.status,
                         durationSeconds: scanData.duration,
                         gate: {
                             passed: gatePassed,
@@ -867,7 +840,7 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                 };
 
                 if (isAsync) {
-                    child.on('close', () => { onScanFinish(); });
+                    child.on('close', code => { onScanFinish(code); });
                     res.writeHead(202, { 'Content-Type': 'application/json' });
                     return res.end(JSON.stringify({
                         scanId,
@@ -879,15 +852,15 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                     }));
                 } else {
                     // Synchronous CI/CD response (awaits scan completion and returns gate result)
-                    child.on('close', () => {
-                        const result = onScanFinish();
+                    child.on('close', code => {
+                        const result = onScanFinish(code);
                         const statusCode = result.gate.passed ? 200 : 422;
                         res.writeHead(statusCode, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify(result, null, 2));
                     });
                 }
             } catch (err) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err.message }));
             }
         });
@@ -901,71 +874,27 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
         let targetData = activeScans.get(scanId);
         let reportJson = targetData?.report;
 
-        // If not in activeScans, try disk
-        if (!reportJson && fs.existsSync(REPORTS_DIR)) {
-            try {
-                const reportDirs = fs.readdirSync(REPORTS_DIR).filter(d => {
-                    const full = path.join(REPORTS_DIR, d);
-                    return fs.existsSync(full) && fs.statSync(full).isDirectory();
-                });
-                for (const d of reportDirs) {
-                    if (d === scanId || d.includes(scanId)) {
-                        const p = path.join(REPORTS_DIR, d, 'report.json');
-                        if (fs.existsSync(p)) {
-                            reportJson = JSON.parse(fs.readFileSync(p, 'utf-8'));
-                            break;
-                        }
-                    }
-                }
-            } catch (e) {}
+        if (!reportJson && /^[\w-]+$/.test(scanId)) {
+            const reportPath = path.join(REPORTS_DIR, scanId, 'report.json');
+            if (fs.existsSync(reportPath)) reportJson = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
         }
-
-        // Fallback to scanHistory or latest report on disk if scanId is 'latest', 'current', or missing
         if (!reportJson) {
-            const hist = scanHistory.find(s => s.scanId === scanId || scanId === 'latest' || scanId === 'current') || scanHistory[0];
-            if (hist?.report) {
-                reportJson = hist.report;
-            }
+            res.writeHead(targetData && !targetData.completed ? 409 : 404, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'No report is available for this scan.' }));
         }
+        const scoreData = calculateSecurityScore(reportJson);
 
-        if (!reportJson && fs.existsSync(REPORTS_DIR)) {
-            try {
-                const reportDirs = fs.readdirSync(REPORTS_DIR).filter(d => {
-                    const full = path.join(REPORTS_DIR, d);
-                    return fs.existsSync(full) && fs.statSync(full).isDirectory();
-                }).sort().reverse();
-                if (reportDirs.length > 0) {
-                    const p = path.join(REPORTS_DIR, reportDirs[0], 'report.json');
-                    if (fs.existsSync(p)) reportJson = JSON.parse(fs.readFileSync(p, 'utf-8'));
-                }
-            } catch (e) {}
-        }
-
-        const scoreData = reportJson ? calculateSecurityScore(reportJson) : {
-            overallScore: 92,
-            grade: 'A',
-            gradeColor: '#00ff88',
-            statusText: 'Protected',
-            subCategories: {
-                apiSecurity: 95,
-                authentication: 90,
-                aiSafety: 94,
-                businessLogic: 91,
-                codeQuality: 88
-            }
-        };
-
-        const targetUrl = reportJson?.meta?.target || targetData?.url || 'https://vibe-shield-demo.app';
+        const targetUrl = reportJson?.meta?.target || targetData?.url || 'Unknown target';
         const scannedAt = reportJson?.meta?.scannedAt || new Date().toISOString();
-        const durationSec = reportJson?.meta?.duration ? (reportJson.meta.duration / 1000).toFixed(1) : (targetData?.duration || '12.4');
-        const summary = reportJson?.dedupSummary || reportJson?.summary || { critical: 0, high: 1, medium: 2, low: 3, total: 6 };
+        const durationSec = reportJson?.meta?.duration ? (reportJson.meta.duration / 1000).toFixed(1) : (targetData?.duration || '0');
+        const summary = reportJson?.dedupSummary || reportJson?.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
         const rawFindings = reportJson?.deduplicated || reportJson?.findings || [];
 
         // Build top findings
         const topFindings = rawFindings.slice(0, 8).map(f => {
             const cvss = inferCvssForFinding(f);
             return {
-                id: f.id || nanoid(6),
+                id: f.id || randomId(6),
                 title: f.title || f.name || 'Security Finding',
                 severity: (f.severity || 'medium').toUpperCase(),
                 agent: f.agent || 'VIBE-SHIELD',
@@ -994,39 +923,12 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                 statusText: scoreData.statusText,
                 summary,
                 subscores: scoreData.subCategories,
-                riskStatement: summary.critical > 0 
-                    ? `CRITICAL RISK: ${summary.critical} critical security vulnerabilities detected requiring immediate 24-hour engineering remediation before external production launch.`
-                    : summary.high > 0 
-                    ? `MODERATE RISK: ${summary.high} high-severity security finding(s) detected. Security posture is robust but requires priority patches.`
-                    : `EXCELLENT POSTURE: Application demonstrated resilient guardrails and zero critical exploit surfaces during autonomous probing.`
+                riskStatement: reportJson.coverage?.status !== 'complete'
+                    ? 'Incomplete coverage. Findings remain useful, but no security grade can be established.'
+                    : `${summary.total} findings in the tested scope. ${summary.critical || 0} critical and ${summary.high || 0} high. Automated scans do not establish compliance or prove the absence of vulnerabilities.`
             },
-            complianceReadiness: {
-                owaspTop10: summary.critical === 0 ? '94% Compliant' : 'Requires Remediation',
-                owaspLlmTop10: '98% Defended (Guardrails Verified)',
-                soc2Security: summary.critical === 0 && summary.high === 0 ? 'Ready for Audit' : 'Gap Identified',
-                gdprDataPrivacy: 'Compliant (No Unencrypted PII Leaks)',
-                hipaaSecurityRule: 'Compliant (Strict Transport & Session Controls)'
-            },
-            roadmap: [
-                {
-                    phase: 'Phase 1: Immediate Hotfixes (Next 24-48 Hours)',
-                    action: 'Deploy automated patch bundle, seal open debug endpoints, enforce Content-Security-Policy and strict CORS.',
-                    owner: 'SecOps & Backend Team',
-                    status: 'Urgent'
-                },
-                {
-                    phase: 'Phase 2: Architectural Hardening (Next 7-14 Days)',
-                    action: 'Implement NeMo / Llama-Guard LLM prompt injection guardrails and rate-limiting middleware.',
-                    owner: 'AI & Infra Team',
-                    status: 'In Progress'
-                },
-                {
-                    phase: 'Phase 3: Continuous Monitoring & CI/CD Gating (Ongoing)',
-                    action: 'Integrate VIBE SHIELD GitHub Action webhook into PR pipeline with Minimum Score Gate = 85.',
-                    owner: 'DevOps Team',
-                    status: 'Recommended'
-                }
-            ],
+            complianceReadiness: Object.fromEntries(['owaspTop10', 'owaspLlmTop10', 'soc2Security', 'gdprDataPrivacy', 'hipaaSecurityRule'].map(key => [key, 'Not assessed by this scan'])),
+            roadmap: topFindings.filter(f => f.remediation).map(f => ({ phase: f.severity, action: f.remediation, owner: 'Application team', status: 'Recommended' })),
             topFindings
         };
 
@@ -1144,7 +1046,7 @@ jobs:
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(patch));
             } catch (err) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err.message }));
             }
         });
@@ -1198,13 +1100,18 @@ jobs:
                 const geminiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
                 const openaiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY;
 
+                if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('Enter a question.');
                 const scanContext = report || (scanId ? activeScans.get(scanId)?.report : null);
+                if (!scanContext) {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ response: 'Run or select a scan first. No scan evidence is available for this question.', provider: 'local' }));
+                }
 
                 // 1. If NVIDIA API key is configured, call NVIDIA NIM API (Llama-3.1 70B / Nemotron)
                 if (nvidiaKey) {
                     try {
                         const targetUrl = scanContext?.meta?.target || 'the scanned site';
-                        const score = scanContext?.score || scanContext?.report?.score || 'N/A';
+                        const score = calculateSecurityScore(scanContext).overallScore ?? 'N/A';
                         const dedup = scanContext?.dedupSummary || scanContext?.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
                         const findingsList = (scanContext?.findings || []).map((f, i) => `${i + 1}. [${(f.severity || 'info').toUpperCase()}] ${f.title}\n   • Surface: ${f.affectedSurface || f.url || 'N/A'}\n   • Description: ${f.description || 'No description'}\n   • Recommendation: ${f.recommendation || f.remediation || 'Apply secure coding controls'}\n   • OWASP: ${f.owasp?.id || f.owasp || 'General'}`).join('\n\n');
 
@@ -1302,7 +1209,7 @@ jobs:
                 const findings = scanContext?.findings || [];
                 const summary = scanContext?.dedupSummary || scanContext?.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
                 const targetUrl = scanContext?.meta?.target || 'the website';
-                const score = scanContext?.score ?? (summary.critical > 0 ? 45 : summary.high > 0 ? 68 : 88);
+                const score = scanContext ? (calculateSecurityScore(scanContext.report || scanContext).overallScore ?? 'N/A') : 'N/A';
 
                 // Top findings grouped by severity
                 const crits = findings.filter(f => f.severity === 'critical');
@@ -1339,7 +1246,7 @@ jobs:
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ response: responseText, provider: 'local-engine' }));
             } catch (err) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err.message }));
             }
         });
@@ -1371,7 +1278,9 @@ function stripAnsi(str) {
 }
 
 function parseScanLogs(scanData, text) {
+    text = stripAnsi(text);
     for (const agentName of Object.keys(scanData.agents)) {
+        if (scanData.structuredEvents) break;
         if (text.includes(`[${agentName}] Complete`) || text.includes(`✔ [${agentName}]`)) {
             scanData.agents[agentName].status = 'done';
             scanData.agents[agentName].message = 'Complete ✔';
@@ -1420,7 +1329,7 @@ function parseScanLogs(scanData, text) {
 }
 
 function startServer(portToUse) {
-    server.listen(portToUse)
+    server.listen(portToUse, process.env.HOST || '127.0.0.1')
         .on('listening', () => {
             console.log(`\n🛡️  VIBE SHIELD Web Application running at http://localhost:${portToUse}\n`);
         })

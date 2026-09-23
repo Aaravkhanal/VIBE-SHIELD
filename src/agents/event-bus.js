@@ -31,6 +31,9 @@ export class EventBus extends EventEmitter {
             timestamp: new Date().toISOString(),
         };
         this._log.push(entry);
+        if (process.connected && typeof process.send === 'function') {
+            process.send({ event, data }, () => {});
+        }
         return super.emit(event, data);
     }
 

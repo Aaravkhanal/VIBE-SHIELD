@@ -170,7 +170,7 @@ export class Crawler {
                         .finally(() => {
                             activeWorkers--;
                             // Try to pick up more work
-                            if (activeWorkers === 0 && queueIndex >= queue.length) {
+                            if (activeWorkers === 0 && (queueIndex >= queue.length || self.visited.size >= self.maxPages)) {
                                 resolve();
                             } else {
                                 tryDequeue();
@@ -179,7 +179,7 @@ export class Crawler {
                 }
 
                 // If no workers active and nothing left, resolve
-                if (activeWorkers === 0 && queueIndex >= queue.length) {
+                if (activeWorkers === 0 && (queueIndex >= queue.length || self.visited.size >= self.maxPages)) {
                     resolve();
                 }
             }
@@ -304,6 +304,10 @@ export class Crawler {
             }
             pageData.loadTime = Date.now() - startTime;
             pageData.status = response?.status() || null;
+            pageData.headers = response ? await response.allHeaders() : {};
+            // Follow canonical redirects (e.g. apex to www) before discovering links.
+            if (depth === 0 && response) this.baseUrl = new URL(page.url());
+            pageData.url = page.url();
             pageData.title = await page.title();
 
             // Rate limit check on main page response

@@ -69,6 +69,9 @@ export class CrawlAgent extends BaseAgent {
 
         // Store inventory in shared context for downstream agents
         context.surfaceInventory = mergedInventory;
+        if (!mergedInventory.pages.some(p => typeof p.status === 'number' && p.status >= 200 && p.status < 400)) {
+            throw new Error('No accessible pages were crawled. Check the URL, authentication, network access, and target availability.');
+        }
 
         // Broadcast discovery to all listening agents
         context.eventBus.emit('surface:discovered', {

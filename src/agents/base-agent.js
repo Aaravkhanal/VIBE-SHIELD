@@ -18,6 +18,8 @@ export class BaseAgent {
         this._startTime = null;
         this._endTime = null;
         this._findings = [];
+        this.errors = [];
+        this.assessment = 'assessed';
         this._eventBus = null;
         this._logger = null;
         this._config = null;
@@ -74,7 +76,7 @@ export class BaseAgent {
 
         try {
             await this._execute(this._context);
-            this._status = 'done';
+            this._status = this.errors.length ? 'partial' : 'done';
             this._endTime = Date.now();
 
             this._eventBus.emit('agent:completed', {
@@ -82,6 +84,8 @@ export class BaseAgent {
                 timestamp: new Date().toISOString(),
                 duration: this.duration,
                 findingsCount: this._findings.length,
+                status: this._status,
+                errors: this.errors,
             });
             this._log(`Agent completed — ${this._findings.length} findings in ${this.duration}ms`);
 
@@ -149,6 +153,7 @@ export class BaseAgent {
      * Internal logging helper.
      */
     _log(message, level = 'info') {
+        if (level === 'error') this.errors.push(message);
         if (this._logger?.[level]) {
             this._logger[level](`[${this.name}] ${message}`);
         }

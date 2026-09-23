@@ -262,6 +262,7 @@ async function runScan(rawUrl, options, modulesToRun) {
         const testSummary = qaAgent?.testSummary || {};
 
         const { reportDir, summary, dedupSummary } = await reporter.generate({
+            agents: results.agents,
             findings: results.findings,
             deduplicated: results.deduplicated,
             dedupStats: results.dedupStats,
@@ -344,13 +345,17 @@ async function runScan(rawUrl, options, modulesToRun) {
 
         console.log();
 
+        if (Object.values(results.agents).some(a => ['error', 'partial', 'skipped'].includes(a.status)) || (results.surfaceInventory?.pages || []).some(p => typeof p.status !== 'number' || p.status >= 400)) {
+            console.error(chalk.yellow('  Scan coverage is incomplete. Review the report and module errors.'));
+            process.exitCode = 2;
+        }
         if (summary.critical > 0) {
             console.log(chalk.red.bold('  ⚠ CRITICAL findings detected — immediate action required!'));
             if (config.halt_on_critical) process.exit(1);
         } else if (summary.high > 0) {
             console.log(chalk.hex('#ff6d00')('  ⚠ HIGH severity findings detected — review recommended.'));
         } else if (summary.total === 0) {
-            console.log(chalk.hex('#00ff88')('  ✔ No findings at the configured severity threshold. Clean scan!'));
+            console.log(chalk.hex('#00ff88')('  ✔ No findings at the configured severity threshold; this does not prove absence of vulnerabilities.'));
         }
 
         console.log();
@@ -373,6 +378,7 @@ program
     .option('-o, --output <dir>', 'Output directory for reports')
     .option('-m, --modules <list>', 'Comma-separated modules to run (qa,security,ai,logic,api)', 'qa,security,ai,logic,api')
     .option('-s, --severity <level>', 'Minimum severity threshold (critical|high|medium|low|info)', 'low')
+    .option('--project-dir <path>', 'Local target source directory for dependency auditing (optional)')
     .option('--profile <type>', 'Scan profile: quick|deep|ci (overrides crawl settings)')
     .option('--compliance <framework>', 'Generate compliance report (owasp)')
     .option('--json', 'Output JSON report')
