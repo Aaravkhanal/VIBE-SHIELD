@@ -56,7 +56,7 @@ export class SecurityAgent extends BaseAgent {
             { name: 'upload', label: 'Testing file upload security' },
             { name: 'csrf', label: 'Detecting missing CSRF protection' },
             { name: 'redirect', label: 'Probing for open redirects' },
-            { name: 'subdomains', label: 'Enumerating subdomains' },
+            { name: 'subdomains', label: 'Checking authorized subdomain scope' },
             { name: 'cookies', label: 'Auditing cookie security' },
             { name: 'csp', label: 'Validating Content Security Policy' },
             { name: 'clickjacking', label: 'Detecting clickjacking vulnerabilities' },
@@ -209,7 +209,7 @@ export class SecurityAgent extends BaseAgent {
         // Phase 11: Subdomain Enumeration
         this.progress(phases[10].name, phases[10].label, (completedPhases / phases.length) * 100);
         try {
-            const scanner = new SubdomainScanner(logger);
+            const scanner = new SubdomainScanner(config, logger);
             const findings = await scanner.scan(surfaceInventory);
             this.addFindings(findings);
             this._log(`Subdomains: ${findings.length} findings`);
@@ -275,4 +275,3 @@ export class SecurityAgent extends BaseAgent {
 }
 
 export default SecurityAgent;
-

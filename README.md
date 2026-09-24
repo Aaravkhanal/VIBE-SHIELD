@@ -296,11 +296,11 @@ checks use detection-only payloads and do not issue state-changing requests
 | **SQLi Prober** | Tests URL params, form inputs, and API endpoints with SQL and NoSQL payloads. Detects 18 database error signatures plus boolean-based and time-based blind injection |
 | **Dependency Auditor** | Runs `npm audit`, maps CVE advisories to VIBE SHIELD severity, checks for unpinned dependencies and risky npm scripts |
 | **TLS Checker** | Validates certificate expiry, detects self-signed certs, checks HTTP→HTTPS redirect, and scans for mixed content |
-| **Infrastructure Scanner** | Probes 40 admin/debug endpoints, detects directory listing, checks error pages for information disclosure, and tests GraphQL introspection |
+| **Infrastructure Scanner** | Probes admin/debug endpoints, rejects SPA and custom-404 catch-alls through response comparison, and reports services only after product-specific fingerprint verification |
 | **File Upload Tester** | Tests upload endpoints for MIME spoofing, dangerous extensions, and path traversal *(active — `safe-active`+)* |
 | **CSRF Detector** | Checks state-changing forms/endpoints for anti-CSRF tokens and SameSite cookie protection |
 | **Open Redirect Detector** | Tests redirect parameters for unvalidated off-site redirection *(active — `safe-active`+)* |
-| **Subdomain Scanner** | Enumerates common subdomains and flags exposed/sensitive hosts |
+| **Subdomain Scanner** | Opt-in DNS/CT enumeration with Public Suffix List tenant boundaries, explicit organization scope, wildcard DNS filtering, ownership evidence, TLS inspection, and response fingerprints |
 | **Cookie Auditor** | Audits cookies for `HttpOnly`, `Secure`, `SameSite`, and scope/expiry hygiene |
 | **CSP Validator** | Parses Content-Security-Policy for unsafe directives (`unsafe-inline`, `unsafe-eval`, wildcards, missing directives) |
 | **Clickjacking Detector** | Verifies frame-busting protection via `X-Frame-Options` / CSP `frame-ancestors` |
@@ -511,6 +511,8 @@ Correlations appear in the CLI output and reports with severity escalation.
 | `--compliance <framework>` | Generate compliance report (`owasp`) | — |
 | `--max-pages <n>` | Maximum pages to crawl | `50` |
 | `--max-depth <n>` | Maximum crawl depth | `5` |
+| `--external-subdomains` | Enable external DNS and certificate-log subdomain enumeration | off |
+| `--organization-domains <list>` | Comma-separated domains or narrower DNS zones explicitly authorized for enumeration | PSL-derived target scope |
 | `--halt-on-critical` | Abort scan immediately on any critical finding | off |
 | `--webhook <url>` | POST findings summary to webhook URL on completion | off |
 | `--prod-safe` | Confirm authorization to scan production targets | off |
@@ -796,6 +798,11 @@ cp vibe-shield.config.example.json vibe-shield.config.json
     "max_depth": 5,
     "concurrency": 4
   },
+  "subdomains": {
+    "external_enumeration": false,
+    "organization_domains": [],
+    "max_candidates": 100
+  },
   "llm": {
     "enabled": false,
     "provider": "openai",
@@ -824,11 +831,20 @@ warnings on load (and ignored) rather than silently honored.
 | `crawler.max_pages` | number | Maximum pages to crawl |
 | `crawler.max_depth` | number | Maximum link depth to follow |
 | `crawler.concurrency` | number | Parallel crawl workers |
+| `subdomains.external_enumeration` | boolean | Enable external DNS/CT enumeration; disabled by default |
+| `subdomains.organization_domains` | string[] | Explicit domains or narrower DNS zones authorized for enumeration; private hosting suffixes such as `vercel.app` are rejected as organization roots |
+| `subdomains.max_candidates` | number | Maximum external hostname candidates to probe (1–500) |
 | `llm.enabled` | boolean | Enable optional LLM augmentation (default `false`) — see [LLM Augmentation](#llm-augmentation-optional) |
 | `llm.provider` | string | `openai` or `anthropic` |
 | `llm.model` | string | Model id (provider default if omitted) |
 | `llm.consent` | boolean | Required (with enablement) before any data egress |
 | `llm.max_calls` / `llm.token_budget` | number | Per-scan call / token budgets |
+
+Subdomain scope uses the Public Suffix List with private suffixes enabled. A target
+such as `something.vercel.app` is therefore scoped to `something.vercel.app`, not
+the shared provider domain `vercel.app`. Wildcard DNS responses are filtered, and
+a hostname such as `jenkins.example.com` is never classified as Jenkins from its
+name alone; the response must match Jenkins-specific headers or content.
 
 ### CI/CD Integration
 

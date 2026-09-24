@@ -279,7 +279,7 @@ const server = http.createServer(async (req, res) => {
         req.on('data', chunk => body += chunk);
         req.on('end', () => {
             try {
-                const { url, modules = ['qa', 'security', 'ai', 'logic', 'api'], safetyMode = 'safe-active', maxPages = '25', auth = {} } = JSON.parse(body);
+                const { url, modules = ['qa', 'security', 'ai', 'logic', 'api'], safetyMode = 'safe-active', maxPages = '25', auth = {}, externalSubdomains = false, organizationDomains = [] } = JSON.parse(body);
 
                 if (!url) {
                     res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -367,6 +367,13 @@ const server = http.createServer(async (req, res) => {
                     }
                     if (auth.role) {
                         args.push('--auth-role', auth.role);
+                    }
+                }
+
+                if (externalSubdomains === true) {
+                    args.push('--external-subdomains');
+                    if (Array.isArray(organizationDomains) && organizationDomains.length > 0) {
+                        args.push('--organization-domains', organizationDomains.map(value => String(value).trim()).filter(Boolean).join(','));
                     }
                 }
 
@@ -754,6 +761,8 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                 const safetyMode = payload.safetyMode || 'safe-active';
                 const isAsync = payload.async === true;
                 const auth = payload.auth || {};
+                const externalSubdomains = payload.externalSubdomains === true;
+                const organizationDomains = Array.isArray(payload.organizationDomains) ? payload.organizationDomains : [];
                 const securityGate = {
                     minScore: payload.securityGate?.minScore ?? 80,
                     maxCritical: payload.securityGate?.maxCritical ?? 0,
@@ -815,6 +824,13 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                     if (auth.loginUrl) args.push('--login-url', auth.loginUrl);
                     if (auth.strategy) args.push('--auth-strategy', auth.strategy);
                     if (auth.role) args.push('--auth-role', auth.role);
+                }
+
+                if (externalSubdomains) {
+                    args.push('--external-subdomains');
+                    if (organizationDomains.length > 0) {
+                        args.push('--organization-domains', organizationDomains.map(value => String(value).trim()).filter(Boolean).join(','));
+                    }
                 }
 
                 args.push('--' + safetyMode);

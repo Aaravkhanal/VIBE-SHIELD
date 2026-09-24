@@ -26,6 +26,11 @@
         "timeout": 30000,
         "concurrency": 4
     },
+    "subdomains": {
+        "external_enumeration": false,
+        "organization_domains": [],
+        "max_candidates": 100
+    },
     "llm": {
         "enabled": false,
         "provider": "openai",

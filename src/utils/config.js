@@ -43,6 +43,11 @@ const DEFAULTS = {
         timeout: 30000,
         concurrency: 4,
     },
+    subdomains: {
+        external_enumeration: false,
+        organization_domains: [],
+        max_candidates: 100,
+    },
     viewports: {
         mobile: { width: 375, height: 812 },
         tablet: { width: 768, height: 1024 },
@@ -77,10 +82,11 @@ const SCAN_PROFILES = {
 const KNOWN_TOP_LEVEL_KEYS = new Set([
     'target_url', 'project_root', 'credentials', 'modules_enabled', 'severity_threshold',
     'halt_on_critical', 'prod_safe', 'notify_webhook', 'safety_mode',
-    'crawler', 'viewports', 'auth', 'business_context', 'output_dir',
+    'crawler', 'viewports', 'auth', 'business_context', 'output_dir', 'subdomains',
     'llm', '_profile', '_authManager',
 ]);
 const KNOWN_CRAWLER_KEYS = new Set(['max_depth', 'max_pages', 'timeout', 'concurrency']);
+const KNOWN_SUBDOMAIN_KEYS = new Set(['external_enumeration', 'organization_domains', 'max_candidates']);
 const KNOWN_LLM_KEYS = new Set([
     'enabled', 'provider', 'model', 'max_tokens', 'max_calls',
     'token_budget', 'timeout_seconds', 'consent', 'base_url',
@@ -154,6 +160,33 @@ export function validateConfig(fileConfig) {
                 } else if (!KNOWN_CRAWLER_KEYS.has(key)) {
                     warnings.push(`Unknown crawler config key "crawler.${key}" — ignoring.`);
                 }
+            }
+        }
+    }
+
+    if (cfg.subdomains !== undefined) {
+        if (typeof cfg.subdomains !== 'object' || cfg.subdomains === null || Array.isArray(cfg.subdomains)) {
+            warnings.push('Config key "subdomains" should be an object.');
+            delete cfg.subdomains;
+        } else {
+            cfg.subdomains = { ...cfg.subdomains };
+            for (const key of Object.keys(cfg.subdomains)) {
+                if (!KNOWN_SUBDOMAIN_KEYS.has(key)) {
+                    warnings.push(`Unknown subdomains config key "subdomains.${key}" — ignoring.`);
+                    delete cfg.subdomains[key];
+                }
+            }
+            if (cfg.subdomains.external_enumeration !== undefined && typeof cfg.subdomains.external_enumeration !== 'boolean') {
+                warnings.push('Config key "subdomains.external_enumeration" should be a boolean.');
+                delete cfg.subdomains.external_enumeration;
+            }
+            if (cfg.subdomains.organization_domains !== undefined && !Array.isArray(cfg.subdomains.organization_domains)) {
+                warnings.push('Config key "subdomains.organization_domains" should be an array of authorized domains or DNS zones.');
+                delete cfg.subdomains.organization_domains;
+            }
+            if (cfg.subdomains.max_candidates !== undefined && (!Number.isInteger(cfg.subdomains.max_candidates) || cfg.subdomains.max_candidates < 1 || cfg.subdomains.max_candidates > 500)) {
+                warnings.push('Config key "subdomains.max_candidates" should be an integer between 1 and 500.');
+                delete cfg.subdomains.max_candidates;
             }
         }
     }
@@ -253,6 +286,7 @@ export function loadConfig(cliOptions = {}) {
         ...DEFAULTS,
         ...fileConfig,
         crawler: { ...DEFAULTS.crawler, ...(fileConfig.crawler || {}) },
+        subdomains: { ...DEFAULTS.subdomains, ...(fileConfig.subdomains || {}) },
         viewports: { ...DEFAULTS.viewports, ...(fileConfig.viewports || {}) },
         llm: { ...DEFAULTS.llm, ...(fileConfig.llm || {}) },
     };
@@ -283,6 +317,10 @@ export function loadConfig(cliOptions = {}) {
     if (cliOptions.html) config.output_html = true;
     if (cliOptions.maxPages) config.crawler.max_pages = parseInt(cliOptions.maxPages);
     if (cliOptions.maxDepth) config.crawler.max_depth = parseInt(cliOptions.maxDepth);
+    if (cliOptions.externalSubdomains) config.subdomains.external_enumeration = true;
+    if (cliOptions.organizationDomains) {
+        config.subdomains.organization_domains = String(cliOptions.organizationDomains).split(',').map(item => item.trim()).filter(Boolean);
+    }
 
     // Resolve safety mode (CLI flag > file > default)
     config.safety_mode = resolveSafetyMode(cliOptions, config.safety_mode);

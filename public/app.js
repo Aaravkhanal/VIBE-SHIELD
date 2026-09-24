@@ -131,6 +131,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (wafBundleBtn) wafBundleBtn.addEventListener('click', () => openPanel('waf-panel'));
 
     // ── Form Submit ───────────────────────────────────────
+    const externalSubdomainsInput = document.getElementById('external-subdomains');
+    const organizationDomainsInput = document.getElementById('organization-domains');
+    externalSubdomainsInput?.addEventListener('change', () => {
+        if (organizationDomainsInput) organizationDomainsInput.disabled = !externalSubdomainsInput.checked;
+    });
+
     scanForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const url = targetUrlInput.value.trim();
@@ -142,6 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const safetyMode = document.getElementById('safety-mode')?.value || 'safe-active';
         const maxPages = document.getElementById('max-pages')?.value || '25';
+        const externalSubdomains = Boolean(externalSubdomainsInput?.checked);
+        const organizationDomains = (organizationDomainsInput?.value || '').split(',').map(item => item.trim()).filter(Boolean);
 
         // Auth from tab-based UI
         let authConfig = { strategy: currentAuthStrategy };
@@ -178,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/scan', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url, modules, safetyMode, maxPages, auth: authConfig })
+                body: JSON.stringify({ url, modules, safetyMode, maxPages, auth: authConfig, externalSubdomains, organizationDomains })
             });
 
             const data = await res.json();

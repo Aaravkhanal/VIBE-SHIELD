@@ -1,315 +1,273 @@
+import crypto from 'node:crypto';
+import dns from 'node:dns/promises';
+import tls from 'node:tls';
 import { createFinding } from '../../utils/finding.js';
-import dns from 'dns/promises';
-import { isIP } from 'node:net';
+import { domainMetadata, isHostnameInScope, organizationScopes } from '../../utils/domain-scope.js';
+import { responseSimilarity } from '../../utils/response-similarity.js';
+
+const PREFIXES = [
+    'api', 'app', 'admin', 'staging', 'stage', 'dev', 'test', 'beta', 'internal',
+    'portal', 'dashboard', 'status', 'monitor', 'grafana', 'kibana', 'prometheus',
+    'jenkins', 'ci', 'gitlab', 'db', 'mysql', 'postgres', 'mongo', 'redis', 'vpn',
+    'backup', 'phpmyadmin', 'adminer', 'auth', 'login', 'sso', 'graphql', 'www',
+];
+
+const SERVICE_FINGERPRINTS = [
+    { id: 'jenkins', label: 'Jenkins', severity: 'high', headers: [['x-jenkins']], body: [/jenkins/i, /adjuncts\//i] },
+    { id: 'gitlab', label: 'GitLab', severity: 'high', headers: [['x-gitlab-meta']], body: [/gitlab/i, /gon\.gitlab/i] },
+    { id: 'grafana', label: 'Grafana', severity: 'medium', headers: [['x-grafana-org-id']], body: [/grafana/i, /public\/build\/.*grafana/i] },
+    { id: 'kibana', label: 'Kibana', severity: 'medium', headers: [['kbn-name'], ['x-kibana-request-id']], body: [/kibana/i, /kbn-injected-metadata/i] },
+    { id: 'prometheus', label: 'Prometheus', severity: 'medium', body: [/prometheus time series collection/i, /<title>prometheus/i] },
+    { id: 'phpmyadmin', label: 'phpMyAdmin', severity: 'high', body: [/phpmyadmin/i, /pmahomme/i] },
+    { id: 'elasticsearch', label: 'Elasticsearch', severity: 'medium', body: [/"cluster_name"\s*:/i, /"tagline"\s*:\s*"you know, for search"/i] },
+];
+
+function dnsSignature(record) {
+    if (!record) return '';
+    return [...(record.addresses || []), ...(record.cnames || []).map(item => `cname:${item}`)].sort().join('|');
+}
 
 /**
- * SubdomainScanner — Discovers related subdomains via DNS bruteforce
- * and Certificate Transparency logs.
- *
- * Methods:
- *   1. Common prefix DNS bruteforce (80+ prefixes)
- *   2. crt.sh Certificate Transparency log query
- *   3. HTTP probe discovered subdomains for status + title
+ * Discovers subdomains only inside an authorized organization scope. External
+ * DNS/CT enumeration is disabled by default and private PSL entries (for
+ * example vercel.app) are treated as suffixes, never as tenant ownership.
  */
 export class SubdomainScanner {
-    constructor(logger) {
-        this.logger = logger;
+    constructor(config = {}, logger = null) {
+        if (config && typeof config.info === 'function' && !logger) {
+            this.logger = config;
+            this.config = {};
+        } else {
+            this.config = config || {};
+            this.logger = logger;
+        }
     }
 
     async scan(surfaceInventory) {
-        this.logger?.info?.('Subdomain Scanner: starting enumeration');
-        const findings = [];
+        const settings = this.config.subdomains || {};
+        if (settings.external_enumeration !== true) {
+            this.logger?.info?.('Subdomain Scanner: external enumeration disabled (enable subdomains.external_enumeration explicitly)');
+            return [];
+        }
+
         const baseUrl = new URL(surfaceInventory.baseUrl);
-        if (isIP(baseUrl.hostname.replace(/^\[|\]$/g, '')) || baseUrl.hostname === 'localhost' || baseUrl.hostname.endsWith('.localhost')) return [];
-        const domain = this._extractRootDomain(baseUrl.hostname);
+        if (!domainMetadata(baseUrl.hostname)) return [];
+        const scopes = organizationScopes(baseUrl.hostname, settings.organization_domains || []);
+        if (scopes.length === 0) return [];
 
-        if (!domain) {
-            this.logger?.info?.('Subdomain Scanner: could not extract root domain — skipping');
-            return findings;
-        }
+        const findings = [];
+        const baseDns = await this._resolveDns(baseUrl.hostname);
+        const baseProbe = await this._probeHost(baseUrl.hostname, { source: 'scan-target' });
+        const maxCandidates = Math.min(Math.max(Number(settings.max_candidates) || 100, 1), 500);
 
-        // Discover subdomains from both methods
-        const discovered = new Map(); // hostname → { source, status, title }
+        for (const scope of scopes) {
+            this.logger?.info?.(`Subdomain Scanner: enumerating authorized scope ${scope.domain} (${scope.source})`);
+            const wildcard = await this._detectWildcard(scope.domain);
+            const discovered = new Map();
 
-        // Method 1: Common prefix bruteforce
-        const bruteforceResults = await this._bruteforceScan(domain);
-        for (const sub of bruteforceResults) {
-            discovered.set(sub, { source: 'dns-bruteforce' });
-        }
+            for (const item of await this._bruteforceScan(scope.domain)) discovered.set(item.hostname, { source: 'dns-bruteforce', dns: item.dns });
+            for (const hostname of await this._ctLogScan(scope.domain)) {
+                if (isHostnameInScope(hostname, scope.domain) && !discovered.has(hostname)) discovered.set(hostname, { source: 'ct-log' });
+            }
 
-        // Method 2: Certificate Transparency logs
-        const ctResults = await this._ctLogScan(domain);
-        for (const sub of ctResults) {
-            if (!discovered.has(sub)) {
-                discovered.set(sub, { source: 'ct-log' });
+            const limited = new Map([...discovered].slice(0, maxCandidates));
+            const probed = await this._probeSubdomains(limited);
+            for (const [hostname, info] of probed) {
+                if (!info.alive || !isHostnameInScope(hostname, scope.domain)) continue;
+                const candidateDns = info.dns || await this._resolveDns(hostname);
+                const wildcardDnsMatch = Boolean(wildcard.detected && dnsSignature(candidateDns) === wildcard.signature);
+                const wildcardResponseSimilarity = wildcard.probe?.alive ? responseSimilarity(info.body, wildcard.probe.body) : 0;
+                if (wildcardDnsMatch && (info.source === 'dns-bruteforce' || wildcardResponseSimilarity >= 0.85)) {
+                    this.logger?.debug?.(`Subdomain Scanner: ignored wildcard response ${hostname}`);
+                    continue;
+                }
+
+                const tlsCertificate = await this._inspectCertificate(hostname);
+                const sharedAddresses = (candidateDns.addresses || []).filter(address => baseDns.addresses?.includes(address));
+                const sharedCnames = (candidateDns.cnames || []).filter(name => baseDns.cnames?.includes(name));
+                const targetSimilarity = baseProbe.alive ? responseSimilarity(info.body, baseProbe.body) : 0;
+                const ownership = {
+                    verified: true,
+                    scope: scope.domain,
+                    scopeSource: scope.source,
+                    dnsNamespaceControl: true,
+                    sharedAddresses,
+                    sharedCnames,
+                    tlsNames: tlsCertificate.names,
+                    tlsMatchesScope: tlsCertificate.names.some(name => isHostnameInScope(name.replace(/^\*\./, ''), scope.domain)),
+                    targetResponseSimilarity: Number(targetSimilarity.toFixed(3)),
+                    wildcardDnsMatch,
+                    wildcardResponseSimilarity: Number(wildcardResponseSimilarity.toFixed(3)),
+                };
+
+                const fingerprint = this._fingerprintService(info);
+                if (fingerprint) findings.push(this._serviceFinding(hostname, info, fingerprint, ownership));
+                else findings.push(this._assetFinding(hostname, info, ownership));
             }
         }
 
-        this.logger?.info?.(
-            `Subdomain Scanner: found ${discovered.size} subdomains ` +
-            `(${bruteforceResults.length} DNS, ${ctResults.length} CT)`
-        );
-
-        // HTTP probe each discovered subdomain
-        const probed = await this._probeSubdomains(discovered);
-
-        // Classify and create findings
-        const interestingPatterns = {
-            admin: { label: 'Admin Panel', severity: 'medium' },
-            staging: { label: 'Staging Environment', severity: 'medium' },
-            stage: { label: 'Staging Environment', severity: 'medium' },
-            dev: { label: 'Development Environment', severity: 'medium' },
-            test: { label: 'Test Environment', severity: 'medium' },
-            internal: { label: 'Internal Service', severity: 'medium' },
-            jenkins: { label: 'CI/CD Server (Jenkins)', severity: 'high' },
-            gitlab: { label: 'GitLab Instance', severity: 'high' },
-            grafana: { label: 'Monitoring Dashboard', severity: 'medium' },
-            kibana: { label: 'Log Dashboard', severity: 'medium' },
-            prometheus: { label: 'Metrics Server', severity: 'medium' },
-            phpmyadmin: { label: 'Database Admin', severity: 'high' },
-            mysql: { label: 'Database Server', severity: 'high' },
-            postgres: { label: 'Database Server', severity: 'high' },
-            redis: { label: 'Cache Server', severity: 'medium' },
-            mongo: { label: 'Database Server', severity: 'high' },
-            elastic: { label: 'Elasticsearch', severity: 'medium' },
-            vpn: { label: 'VPN Endpoint', severity: 'low' },
-            mail: { label: 'Mail Server', severity: 'low' },
-            ftp: { label: 'FTP Server', severity: 'medium' },
-            backup: { label: 'Backup Server', severity: 'high' },
-        };
-
-        for (const [hostname, info] of probed) {
-            if (!info.alive) continue;
-
-            // Check if this is an interesting subdomain
-            const prefix = hostname.replace('.' + domain, '').split('.')[0];
-            const match = interestingPatterns[prefix];
-
-            if (match) {
-                findings.push(createFinding({
-                    module: 'security',
-                    title: `Exposed ${match.label}: ${hostname}`,
-                    severity: match.severity,
-                    affected_surface: `https://${hostname}`,
-                    description:
-                        `Discovered ${match.label.toLowerCase()} at ${hostname} ` +
-                        `(HTTP ${info.status}). Title: "${info.title || 'N/A'}". ` +
-                        `Source: ${info.source}. ` +
-                        `This may expose sensitive configuration, internal tools, or unprotected environments.`,
-                    evidence: {
-                        hostname,
-                        status: info.status,
-                        title: info.title,
-                        source: info.source,
-                        ip: info.ip,
-                    },
-                    remediation:
-                        'Restrict access to internal subdomains via VPN or IP allowlisting. ' +
-                        'Ensure staging/dev environments require authentication. ' +
-                        'Remove DNS records for decommissioned services.',
-                    references: [
-                        'https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/04-Review_Old_Backup_and_Unreferenced_Files_for_Sensitive_Information',
-                    ],
-                }));
-            } else {
-                // Informational finding for any live subdomain
-                findings.push(createFinding({
-                    module: 'security',
-                    title: `Subdomain Discovered: ${hostname}`,
-                    severity: 'info',
-                    affected_surface: `https://${hostname}`,
-                    description:
-                        `Live subdomain at ${hostname} (HTTP ${info.status}). ` +
-                        `Title: "${info.title || 'N/A'}". Source: ${info.source}.`,
-                    evidence: {
-                        hostname,
-                        status: info.status,
-                        title: info.title,
-                        source: info.source,
-                    },
-                    remediation: 'Review all subdomains and ensure they are intentionally public.',
-                }));
-            }
-        }
-
-        this.logger?.info?.(`Subdomain Scanner: ${findings.length} findings (${probed.size} alive)`);
+        this.logger?.info?.(`Subdomain Scanner: ${findings.length} scoped findings`);
         return findings;
     }
 
-    // ── DNS Bruteforce ──────────────────────────────────
-
     async _bruteforceScan(domain) {
-        const prefixes = [
-            'api', 'app', 'admin', 'staging', 'stage', 'dev', 'test',
-            'beta', 'alpha', 'internal', 'intranet', 'portal', 'dashboard',
-            'cms', 'blog', 'docs', 'doc', 'help', 'support',
-            'mail', 'email', 'smtp', 'imap', 'pop',
-            'cdn', 'static', 'assets', 'media', 'images', 'img',
-            'status', 'monitor', 'health', 'metrics',
-            'grafana', 'kibana', 'prometheus', 'elasticsearch', 'elastic',
-            'jenkins', 'ci', 'cd', 'gitlab', 'github', 'bitbucket',
-            'jira', 'confluence', 'wiki',
-            'db', 'database', 'mysql', 'postgres', 'mongo', 'redis',
-            'cache', 'queue', 'rabbitmq', 'kafka',
-            'vpn', 'remote', 'gateway', 'proxy',
-            'ftp', 'sftp', 'backup', 'bak',
-            'phpmyadmin', 'adminer', 'pgadmin',
-            'www', 'web', 'shop', 'store', 'checkout',
-            'sandbox', 'demo', 'preview', 'uat',
-            'auth', 'login', 'sso', 'oauth', 'id', 'identity',
-            'ws', 'websocket', 'socket', 'realtime',
-            'graphql', 'rest', 'rpc',
-            'v1', 'v2', 'v3',
-            'new', 'old', 'legacy', 'next',
-        ];
-
         const found = [];
-        const batchSize = 20;
-
-        for (let i = 0; i < prefixes.length; i += batchSize) {
-            const batch = prefixes.slice(i, i + batchSize);
-            const results = await Promise.allSettled(
-                batch.map(prefix => this._dnsLookup(`${prefix}.${domain}`))
-            );
-
-            results.forEach((result, idx) => {
-                if (result.status === 'fulfilled' && result.value) {
-                    found.push(`${batch[idx]}.${domain}`);
-                }
-            });
+        for (let i = 0; i < PREFIXES.length; i += 10) {
+            const batch = PREFIXES.slice(i, i + 10);
+            const results = await Promise.all(batch.map(async prefix => {
+                const hostname = `${prefix}.${domain}`;
+                const record = await this._resolveDns(hostname);
+                return dnsSignature(record) ? { hostname, dns: record } : null;
+            }));
+            found.push(...results.filter(Boolean));
         }
-
         return found;
     }
 
-    async _dnsLookup(hostname) {
-        try {
-            const addresses = await dns.resolve4(hostname);
-            return addresses.length > 0 ? addresses[0] : null;
-        } catch {
-            return null;
-        }
+    async _resolveDns(hostname) {
+        const [v4, v6, cname] = await Promise.allSettled([dns.resolve4(hostname), dns.resolve6(hostname), dns.resolveCname(hostname)]);
+        return {
+            addresses: [...(v4.status === 'fulfilled' ? v4.value : []), ...(v6.status === 'fulfilled' ? v6.value : [])].sort(),
+            cnames: (cname.status === 'fulfilled' ? cname.value : []).map(item => item.toLowerCase().replace(/\.$/, '')).sort(),
+        };
     }
 
-    // ── Certificate Transparency ─────────────────────────
+    async _detectWildcard(domain) {
+        const hosts = Array.from({ length: 3 }, () => `${crypto.randomBytes(8).toString('hex')}.${domain}`);
+        const records = await Promise.all(hosts.map(hostname => this._resolveDns(hostname)));
+        const signatures = records.map(dnsSignature).filter(Boolean);
+        const signature = signatures.find(item => signatures.filter(candidate => candidate === item).length >= 2) || '';
+        const index = records.findIndex(record => dnsSignature(record) === signature);
+        return {
+            detected: Boolean(signature),
+            signature,
+            samples: hosts.map((hostname, sampleIndex) => ({ hostname, signature: dnsSignature(records[sampleIndex]) })),
+            probe: signature ? await this._probeHost(hosts[index], { source: 'wildcard-control', dns: records[index] }) : null,
+        };
+    }
 
     async _ctLogScan(domain) {
-        const found = [];
-
         try {
-            const response = await fetch(
-                `https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`,
-                {
-                    headers: { 'User-Agent': 'VIBE SHIELD-SecurityScanner/1.0' },
-                    signal: AbortSignal.timeout(15000),
-                }
-            );
-
-            if (!response.ok) return found;
-
-            const entries = await response.json();
-            const seen = new Set();
-
-            for (const entry of entries) {
-                const names = (entry.name_value || '').split('\n');
-                for (let name of names) {
-                    name = name.trim().toLowerCase();
-                    if (name.startsWith('*.')) name = name.slice(2);
-                    if (name.endsWith('.' + domain) && !seen.has(name)) {
-                        seen.add(name);
-                        found.push(name);
-                    }
+            const response = await fetch(`https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`, {
+                headers: { 'User-Agent': 'VIBE-SHIELD-SecurityScanner/1.0' },
+                signal: AbortSignal.timeout(15000),
+            });
+            if (!response.ok) return [];
+            const names = new Set();
+            for (const entry of await response.json()) {
+                for (let name of String(entry.name_value || '').split('\n')) {
+                    name = name.trim().toLowerCase().replace(/^\*\./, '');
+                    if (isHostnameInScope(name, domain) && name !== domain) names.add(name);
                 }
             }
-        } catch (err) {
-            this.logger?.debug?.(`CT log query failed: ${err.message}`);
+            return [...names].slice(0, 100);
+        } catch (error) {
+            this.logger?.debug?.(`CT log query failed: ${error.message}`);
+            return [];
         }
-
-        // Cap at 100 to avoid excessive probing
-        return found.slice(0, 100);
     }
-
-    // ── HTTP Probing ─────────────────────────────────────
 
     async _probeSubdomains(discovered) {
         const probed = new Map();
         const entries = [...discovered.entries()];
-        const batchSize = 10;
-
-        for (let i = 0; i < entries.length; i += batchSize) {
-            const batch = entries.slice(i, i + batchSize);
-            const results = await Promise.allSettled(
-                batch.map(([hostname, info]) => this._probeHost(hostname, info))
-            );
-
-            results.forEach((result, idx) => {
-                if (result.status === 'fulfilled' && result.value) {
-                    probed.set(batch[idx][0], result.value);
-                }
-            });
+        for (let i = 0; i < entries.length; i += 10) {
+            const batch = entries.slice(i, i + 10);
+            const results = await Promise.all(batch.map(([hostname, info]) => this._probeHost(hostname, info)));
+            results.forEach((result, index) => probed.set(batch[index][0], result));
         }
-
         return probed;
     }
 
-    async _probeHost(hostname, info) {
-        // Try HTTPS first, fall back to HTTP
-        for (const proto of ['https', 'http']) {
+    async _probeHost(hostname, info = {}) {
+        for (const protocol of ['https', 'http']) {
             try {
-                const response = await fetch(`${proto}://${hostname}`, {
+                const response = await fetch(`${protocol}://${hostname}`, {
                     redirect: 'follow',
-                    headers: { 'User-Agent': 'VIBE SHIELD-SecurityScanner/1.0' },
+                    headers: { 'User-Agent': 'VIBE-SHIELD-SecurityScanner/1.0' },
                     signal: AbortSignal.timeout(8000),
                 });
-
-                // Extract title from HTML
-                let title = '';
-                const contentType = response.headers.get('content-type') || '';
-                if (contentType.includes('text/html')) {
-                    const body = await response.text();
-                    const titleMatch = body.match(/<title[^>]*>([^<]+)<\/title>/i);
-                    if (titleMatch) title = titleMatch[1].trim().slice(0, 100);
-                }
-
-                // DNS lookup for IP
-                let ip = null;
-                try {
-                    const addresses = await dns.resolve4(hostname);
-                    ip = addresses[0] || null;
-                } catch { /* ignore */ }
-
+                const body = (await response.text()).slice(0, 250000);
+                const title = body.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim().slice(0, 120) || '';
                 return {
-                    ...info,
-                    alive: true,
-                    status: response.status,
-                    title,
-                    protocol: proto,
-                    ip,
+                    ...info, alive: true, status: response.status, title, protocol, body,
+                    headers: Object.fromEntries(response.headers.entries()),
+                    dns: info.dns || await this._resolveDns(hostname),
                 };
-            } catch {
-                // Try next protocol
-            }
+            } catch { /* try the next protocol */ }
         }
-
-        return { ...info, alive: false };
+        return { ...info, alive: false, body: '', headers: {}, dns: info.dns || await this._resolveDns(hostname) };
     }
 
-    // ── Helpers ──────────────────────────────────────────
+    _inspectCertificate(hostname) {
+        return new Promise(resolve => {
+            let settled = false;
+            const finish = value => {
+                if (settled) return;
+                settled = true;
+                resolve(value || { names: [], issuer: null, validTo: null });
+            };
+            const socket = tls.connect({ host: hostname, port: 443, servername: hostname, rejectUnauthorized: false });
+            socket.setTimeout(4000);
+            socket.once('secureConnect', () => {
+                const certificate = socket.getPeerCertificate();
+                const names = String(certificate.subjectaltname || '').split(',').map(item => item.trim().replace(/^DNS:/, '').toLowerCase()).filter(Boolean);
+                socket.destroy();
+                finish({ names, issuer: certificate.issuer?.O || certificate.issuer?.CN || null, validTo: certificate.valid_to || null });
+            });
+            socket.once('timeout', () => { socket.destroy(); finish(); });
+            socket.once('error', () => finish());
+        });
+    }
 
-    _extractRootDomain(hostname) {
-        // Handle cases like api.example.com → example.com
-        // Simple heuristic: take last 2 parts (or 3 for co.uk etc.)
-        const parts = hostname.split('.');
-        if (parts.length <= 2) return hostname;
-
-        // Common TLDs with two parts
-        const twoPartTLDs = ['co.uk', 'co.in', 'com.au', 'co.jp', 'co.kr', 'com.br', 'co.za'];
-        const lastTwo = parts.slice(-2).join('.');
-        if (twoPartTLDs.includes(lastTwo)) {
-            return parts.slice(-3).join('.');
+    _fingerprintService(info) {
+        const headers = info.headers || {};
+        for (const fingerprint of SERVICE_FINGERPRINTS) {
+            const headerMatch = fingerprint.headers?.some(group => group.every(name => headers[name])) || false;
+            const bodyMatches = fingerprint.body?.filter(pattern => pattern.test(`${info.title}\n${info.body}`)).length || 0;
+            if (headerMatch || bodyMatches >= Math.min(2, fingerprint.body?.length || 2)) return { ...fingerprint, signals: { headerMatch, bodyMatches } };
         }
+        return null;
+    }
 
-        return parts.slice(-2).join('.');
+    _assetFinding(hostname, info, ownership) {
+        return createFinding({
+            module: 'security',
+            title: `Owned Subdomain Discovered: ${hostname}`,
+            severity: 'info',
+            affected_surface: `${info.protocol}://${hostname}`,
+            description: `A live hostname was verified inside organization scope ${ownership.scope}. No exposed product or sensitive service was inferred from the hostname alone.`,
+            evidence: { hostname, status: info.status, title: info.title, source: info.source, ownership },
+            verification: { level: 'informational', reason: 'DNS and scope evidence establish an owned attack-surface host; no vulnerability fingerprint was observed.', method: 'scoped-asset-discovery' },
+            remediation: 'Review whether this hostname is intentionally public and keep its software, authentication, and DNS lifecycle managed.',
+        });
+    }
+
+    _serviceFinding(hostname, info, fingerprint, ownership) {
+        const url = `${info.protocol}://${hostname}`;
+        return createFinding({
+            module: 'security',
+            title: `Verified ${fingerprint.label} Service: ${hostname}`,
+            severity: info.status === 200 ? fingerprint.severity : 'low',
+            affected_surface: url,
+            description: `${fingerprint.label} was identified from response fingerprints at an ownership-verified hostname. The classification is based on response content or headers, not the hostname label. HTTP status: ${info.status}.`,
+            reproduction: [`Request ${url}`, `Confirm the ${fingerprint.label} response fingerprints recorded in evidence`],
+            evidence: { hostname, status: info.status, title: info.title, source: info.source, fingerprint: fingerprint.signals, ownership },
+            verification: {
+                level: 'high_confidence',
+                reason: `The hostname is in verified organization scope and its HTTP response matches ${fingerprint.label} fingerprints.`,
+                method: 'ownership-and-service-fingerprint',
+                proof: {
+                    originalRequest: { method: 'GET', url },
+                    mutatedRequest: { method: 'GET', url, purpose: 'service fingerprint verification' },
+                    baselineResponse: { targetResponseSimilarity: ownership.targetResponseSimilarity },
+                    vulnerableResponse: { status: info.status, title: info.title, fingerprint: fingerprint.signals },
+                    responseDifference: { productIdentified: fingerprint.label, wildcardRejected: !ownership.wildcardDnsMatch },
+                    reproductionCommand: `curl -i ${JSON.stringify(url)}`,
+                    accountRole: 'anonymous',
+                },
+            },
+            remediation: 'Require authentication and network restrictions where appropriate, update the service, and remove public DNS when external reachability is unnecessary.',
+        });
     }
 }
 

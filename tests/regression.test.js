@@ -11,6 +11,9 @@ import { completeScan, applyScanEvent, validateScanRequest } from '../src/utils/
 import { Orchestrator } from '../src/agents/orchestrator.js';
 import { BaseAgent } from '../src/agents/base-agent.js';
 import { createFinding, normalizeVerification, verificationSummary } from '../src/utils/finding.js';
+import { domainMetadata, organizationScopes } from '../src/utils/domain-scope.js';
+import { SubdomainScanner } from '../src/core/security/subdomain-scanner.js';
+import { InfraScanner } from '../src/core/security/infra-scanner.js';
 
 const report = (target = 'http://fixture.test/') => ({ meta: { target, modules: ['security'], scannedAt: new Date().toISOString() }, coverage: { status: 'complete' }, agents: {}, surfaceInventory: { totalPages: 1 }, summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0, info: 0 }, findings: [] });
 const scan = (scanId = 'test') => ({ scanId, url: 'http://fixture.test/', startTime: Date.now(), agents: { 'VIBE-SHIELD-SEC': { status: 'pending' } }, terminalLogs: [] });
@@ -152,10 +155,69 @@ test('no AI findings do not imply guardrails are verified', async () => {
 });
 
 test('IP and localhost scans never enumerate unrelated external domains', async () => {
-    const { SubdomainScanner } = await import('../src/core/security/subdomain-scanner.js');
     const scanner = new SubdomainScanner(); scanner._bruteforceScan = () => { throw new Error('out of scope'); };
     assert.deepEqual(await scanner.scan({ baseUrl: 'http://127.0.0.1:8080' }), []);
     assert.deepEqual(await scanner.scan({ baseUrl: 'http://localhost:8080' }), []);
+});
+
+test('PSL scope keeps private-hosting tenants isolated and rejects provider suffixes', () => {
+    assert.deepEqual(domainMetadata('api.something.vercel.app'), {
+        hostname: 'api.something.vercel.app', registrableDomain: 'something.vercel.app',
+        publicSuffix: 'vercel.app', subdomain: 'api', privateSuffix: true,
+    });
+    assert.equal(organizationScopes('something.vercel.app')[0].domain, 'something.vercel.app');
+    assert.deepEqual(organizationScopes('something.vercel.app', ['vercel.app']), [{ domain: 'something.vercel.app', source: 'psl-private-domain', publicSuffix: 'vercel.app' }]);
+    assert.deepEqual(organizationScopes('app.example.com', ['team.example.com']), [{ domain: 'team.example.com', source: 'configured' }]);
+});
+
+test('subdomain enumeration is opt-in and service names require response fingerprints', async () => {
+    const disabled = new SubdomainScanner();
+    disabled._resolveDns = () => { throw new Error('must remain offline'); };
+    assert.deepEqual(await disabled.scan({ baseUrl: 'https://something.vercel.app' }), []);
+
+    const scanner = new SubdomainScanner({ subdomains: { external_enumeration: true } });
+    scanner._resolveDns = async () => ({ addresses: ['192.0.2.10'], cnames: [] });
+    scanner._probeHost = async hostname => ({ alive: true, protocol: 'https', status: 200, title: 'Welcome', body: '<html><title>Welcome</title></html>', headers: {}, dns: { addresses: ['192.0.2.10'], cnames: [] }, source: hostname === 'something.vercel.app' ? 'scan-target' : 'dns-bruteforce' });
+    scanner._detectWildcard = async () => ({ detected: false, signature: '', probe: null });
+    scanner._bruteforceScan = async () => [
+        { hostname: 'jenkins.something.vercel.app', dns: { addresses: ['192.0.2.10'], cnames: [] } },
+        { hostname: 'jenkins.vercel.app', dns: { addresses: ['192.0.2.11'], cnames: [] } },
+    ];
+    scanner._ctLogScan = async () => [];
+    scanner._probeSubdomains = async discovered => new Map([...discovered].map(([hostname, info]) => [hostname, { ...info, alive: true, protocol: 'https', status: 200, title: 'Welcome', body: '<html><title>Welcome</title></html>', headers: {}, dns: info.dns }]));
+    scanner._inspectCertificate = async () => ({ names: ['*.something.vercel.app'] });
+    const findings = await scanner.scan({ baseUrl: 'https://something.vercel.app' });
+    assert.equal(findings.length, 1);
+    assert.match(findings[0].title, /^Owned Subdomain Discovered:/);
+    assert.doesNotMatch(findings[0].title, /Verified Jenkins|Exposed Jenkins/);
+    assert.equal(findings[0].affected_surface, 'https://jenkins.something.vercel.app');
+    assert.equal(scanner._fingerprintService({ headers: { 'x-jenkins': '2.479' }, title: '', body: '' }).label, 'Jenkins');
+});
+
+test('wildcard DNS brute-force candidates are discarded even when their pages differ', async () => {
+    const scanner = new SubdomainScanner({ subdomains: { external_enumeration: true } });
+    const record = { addresses: ['192.0.2.20'], cnames: [] };
+    scanner._resolveDns = async () => record;
+    scanner._probeHost = async () => ({ alive: true, protocol: 'https', status: 200, title: 'Target', body: 'target response', headers: {}, dns: record, source: 'scan-target' });
+    scanner._detectWildcard = async () => ({ detected: true, signature: '192.0.2.20', probe: { alive: true, body: 'generic wildcard' } });
+    scanner._bruteforceScan = async () => [{ hostname: 'jenkins.example.com', dns: record }];
+    scanner._ctLogScan = async () => [];
+    scanner._probeSubdomains = async discovered => new Map([...discovered].map(([hostname, info]) => [hostname, { ...info, alive: true, protocol: 'https', status: 200, title: 'Jenkins', body: '<title>Jenkins</title><script src="adjuncts/app.js"></script>', headers: { 'x-jenkins': '2.479' }, dns: record }]));
+    scanner._inspectCertificate = async () => ({ names: ['*.example.com'] });
+    assert.deepEqual(await scanner.scan({ baseUrl: 'https://example.com' }), []);
+});
+
+test('infrastructure endpoints require fingerprints and reject SPA catch-all responses', async () => {
+    const shell = '<!doctype html><div id="root">Application shell dashboard content</div>';
+    const scanner = new InfraScanner();
+    scanner._fetchSnapshot = async url => ({
+        status: 200, contentType: 'text/html', headers: {},
+        body: url.endsWith('/metrics') ? '# HELP http_requests_total Requests\n# TYPE http_requests_total counter\nhttp_requests_total 2' : shell,
+    });
+    await scanner._probeEndpoints('https://fixture.test');
+    assert.equal(scanner.findings.length, 1);
+    assert.equal(scanner.findings[0].title, 'Verified Public Endpoint: Prometheus metrics endpoint');
+    assert.equal(scanner.findings[0].verification.level, 'high_confidence');
 });
 
 test('IDs preserve requested URL-safe length and reject invalid bounds', async () => {

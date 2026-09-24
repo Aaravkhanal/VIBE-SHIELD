@@ -55,6 +55,11 @@ try {
     const page = await context.newPage(); const pageErrors = [];
     page.on('pageerror', error => pageErrors.push(error.message));
     await page.goto('http://127.0.0.1:3197/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#scan-config-toggle-btn').click();
+    assert.equal(await page.locator('#organization-domains').isDisabled(), true);
+    await page.locator('#external-subdomains').check();
+    assert.equal(await page.locator('#organization-domains').isEnabled(), true);
+    await page.locator('#external-subdomains').uncheck();
     await page.locator('#target-url').fill(target + '/');
     // Keep only security selected and choose passive mode for the full pipeline fixture.
     await page.evaluate(() => {

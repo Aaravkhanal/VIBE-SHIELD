@@ -97,6 +97,17 @@
               </select>
             </div>
           </div>
+          <div class="config-row subdomain-scope-row">
+            <div class="config-field">
+              <label class="scope-toggle"><input type="checkbox" id="external-subdomains"><span>Enumerate external subdomains</span></label>
+              <small>Off by default. Enable only for domains you are authorized to enumerate.</small>
+            </div>
+            <div class="config-field">
+              <label for="organization-domains">Organization scope</label>
+              <input type="text" id="organization-domains" class="config-input" placeholder="example.com, example.org" disabled>
+              <small>Optional comma-separated domains or narrower DNS zones. Private hosting suffixes such as vercel.app are rejected as organization roots.</small>
+            </div>
+          </div>
 
           <!-- Auth -->
           <button type="button" id="auth-expand-btn" class="auth-expand-btn">

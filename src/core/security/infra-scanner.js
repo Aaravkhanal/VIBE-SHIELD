@@ -1,4 +1,6 @@
 import { createFinding } from '../../utils/finding.js';
+import crypto from 'node:crypto';
+import { responseSimilarity } from '../../utils/response-similarity.js';
 
 /**
  * Infrastructure Scanner — Scans for infrastructure exposure and misconfigurations.
@@ -67,6 +69,20 @@ export class InfraScanner {
         { regex: /ECONNREFUSED|ETIMEDOUT.*\d+\.\d+\.\d+\.\d+/i, name: 'Internal IP disclosure', severity: 'medium' },
     ];
 
+    static ENDPOINT_FINGERPRINTS = [
+        { paths: /^\/debug\/pprof/, label: 'Go pprof profiler', severity: 'critical', patterns: [/types of profiles available/i, /profile-description/i] },
+        { paths: /^\/debug\/vars/, label: 'Go expvar endpoint', severity: 'high', patterns: [/"memstats"\s*:/i, /"cmdline"\s*:/i] },
+        { paths: /^\/metrics$/, label: 'Prometheus metrics endpoint', severity: 'high', patterns: [/^#\s*HELP\s+/m, /^#\s*TYPE\s+/m] },
+        { paths: /^\/(?:swagger|api-docs|openapi)/, label: 'API schema interface', severity: 'medium', patterns: [/swagger-ui/i, /"(?:openapi|swagger)"\s*:\s*"/i] },
+        { paths: /^\/(?:graphiql|__graphql)/, label: 'GraphQL development interface', severity: 'medium', patterns: [/graphiql/i, /graphql playground/i] },
+        { paths: /^\/actuator/, label: 'Spring Boot actuator', severity: 'high', patterns: [/"_links"\s*:/i, /"propertySources"\s*:/i, /spring boot actuator/i] },
+        { paths: /^\/phpinfo\.php$/, label: 'PHP information page', severity: 'high', patterns: [/php version/i, /phpinfo\(\)/i] },
+        { paths: /^\/elmah\.axd$/, label: 'ELMAH error log', severity: 'high', patterns: [/error log for/i, /elmah/i] },
+        { paths: /^\/(?:wp-admin|wp-login\.php)/, label: 'WordPress administration login', severity: 'low', patterns: [/wp-login\.php/i, /wordpress/i] },
+        { paths: /^\/(?:admin|administrator|admin\/login|console)$/, label: 'Administration interface', severity: 'low', patterns: [/<input[^>]+type=["']password["']/i, /admin(?:istration|istrator)?\s+(?:login|sign in|console|panel)/i] },
+        { paths: /^\/(?:health|healthz|readyz|status)$/, label: 'Service health endpoint', severity: 'info', patterns: [/"status"\s*:\s*"(?:ok|up|healthy|ready)"/i, /\b(?:healthy|readiness|liveness)\b/i] },
+    ];
+
     /**
      * Run infrastructure scanning.
      */
@@ -93,27 +109,26 @@ export class InfraScanner {
      * Probe known sensitive/admin endpoints.
      */
     async _probeEndpoints(baseUrl) {
+        const baseline = await this._fetchSnapshot(new URL('/', baseUrl).toString());
+        const missingPath = `/.vibe-shield-control-${crypto.randomBytes(8).toString('hex')}`;
+        const missing = await this._fetchSnapshot(new URL(missingPath, baseUrl).toString());
         const results = await Promise.allSettled(
             InfraScanner.PROBE_PATHS.map(async ({ path, desc, severity }) => {
                 const url = new URL(path, baseUrl).toString();
                 try {
-                    const resp = await fetch(url, {
-                        method: 'GET',
-                        redirect: 'follow',
-                        signal: AbortSignal.timeout(5000),
-                    });
+                    const snapshot = await this._fetchSnapshot(url);
+                    if (!snapshot || snapshot.status !== 200 || snapshot.body.trim().length < 20) return null;
+                    const baselineSimilarity = baseline ? responseSimilarity(snapshot.body, baseline.body) : 0;
+                    const missingSimilarity = missing ? responseSimilarity(snapshot.body, missing.body) : 0;
+                    if (this._isGenericSPAPage(snapshot.body, path) || baselineSimilarity >= 0.92 || missingSimilarity >= 0.92) return null;
 
-                    if (resp.ok && resp.status === 200) {
-                        const contentType = resp.headers.get('content-type') || '';
-                        const body = await resp.text();
-
-                        // Skip if it's a generic 200 HTML page (SPA catch-all)
-                        if (this._isGenericSPAPage(body, path)) return null;
-                        // Skip very small responses (likely empty)
-                        if (body.trim().length < 20) return null;
-
-                        return { path, desc, severity, url, contentType, bodyLength: body.length, body };
-                    }
+                    const fingerprint = this._fingerprintEndpoint(path, snapshot);
+                    if (!fingerprint) return null;
+                    return {
+                        path, desc, severity: fingerprint.severity, url,
+                        contentType: snapshot.contentType, bodyLength: snapshot.body.length,
+                        fingerprint, baselineSimilarity, missingSimilarity, status: snapshot.status,
+                    };
                 } catch {
                     // Not accessible
                 }
@@ -123,29 +138,63 @@ export class InfraScanner {
 
         for (const result of results) {
             if (result.status !== 'fulfilled' || !result.value) continue;
-            const { path, desc, severity, url, contentType, bodyLength, body } = result.value;
-
-            // Determine actual severity based on content
-            let actualSeverity = severity;
-            if (this._containsSensitiveData(body)) {
-                actualSeverity = 'critical';
-            }
+            const { path, severity, url, contentType, bodyLength, fingerprint, baselineSimilarity, missingSimilarity, status } = result.value;
 
             this.findings.push(createFinding({
                 module: 'security',
-                title: `Exposed Endpoint: ${path} (${desc})`,
-                severity: actualSeverity,
+                title: `Verified Public Endpoint: ${fingerprint.label}`,
+                severity,
                 affected_surface: url,
-                description: `The endpoint "${path}" (${desc}) is publicly accessible and returned HTTP 200 with ${bodyLength} bytes.\n\nContent-Type: ${contentType}\n\nExposed management, debug, or admin endpoints can leak sensitive information and provide attack vectors.`,
+                description: `The public endpoint "${path}" returned a response matching ${fingerprint.label} fingerprints. Generic SPA and random-path responses were compared and rejected before this finding was created.`,
                 reproduction: [
                     `1. Navigate to ${url}`,
-                    `2. Endpoint returns HTTP 200 with ${bodyLength} bytes`,
-                    `3. Content-Type: ${contentType}`,
+                    `2. Confirm HTTP ${status}, Content-Type ${contentType}, and the recorded product fingerprints`,
                 ],
-                evidence: body.substring(0, 500),
+                evidence: {
+                    status, contentType, bodyLength,
+                    fingerprint: { label: fingerprint.label, matchedPatterns: fingerprint.matchedPatterns },
+                    responseSimilarity: { baseline: Number(baselineSimilarity.toFixed(3)), randomMissingPath: Number(missingSimilarity.toFixed(3)) },
+                },
+                verification: {
+                    level: 'high_confidence',
+                    reason: `The response matched ${fingerprint.label} fingerprints and differed from both the site root and a random missing path.`,
+                    method: 'endpoint-fingerprint-and-response-differential',
+                    proof: {
+                        originalRequest: { method: 'GET', url: new URL('/', baseUrl).toString() },
+                        mutatedRequest: { method: 'GET', url },
+                        baselineResponse: { status: baseline?.status || null, bodyLength: baseline?.body.length || 0 },
+                        vulnerableResponse: { status, contentType, bodyLength, fingerprint: fingerprint.label },
+                        responseDifference: { baselineSimilarity: Number(baselineSimilarity.toFixed(3)), missingPathSimilarity: Number(missingSimilarity.toFixed(3)), matchedPatterns: fingerprint.matchedPatterns },
+                        reproductionCommand: `curl -i ${JSON.stringify(url)}`,
+                        accountRole: 'anonymous',
+                    },
+                },
                 remediation: `Restrict access to "${path}" via authentication, IP whitelisting, or remove it entirely from production. Use environment-based configuration to disable debug endpoints in production.`,
             }));
         }
+    }
+
+    async _fetchSnapshot(url) {
+        try {
+            const response = await fetch(url, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(5000) });
+            return {
+                status: response.status,
+                contentType: response.headers.get('content-type') || '',
+                headers: Object.fromEntries(response.headers.entries()),
+                body: (await response.text()).slice(0, 500000),
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    _fingerprintEndpoint(path, snapshot) {
+        for (const fingerprint of InfraScanner.ENDPOINT_FINGERPRINTS) {
+            if (!fingerprint.paths.test(path)) continue;
+            const matchedPatterns = fingerprint.patterns.filter(pattern => pattern.test(snapshot.body)).map(pattern => pattern.source);
+            if (matchedPatterns.length >= Math.min(2, fingerprint.patterns.length)) return { ...fingerprint, matchedPatterns };
+        }
+        return null;
     }
 
     /**
@@ -289,13 +338,6 @@ export class InfraScanner {
         return false;
     }
 
-    _containsSensitiveData(body) {
-        const sensitivePatterns = [
-            /password/i, /secret/i, /private.*key/i, /access.*token/i,
-            /database/i, /DB_HOST/i, /api.?key/i,
-        ];
-        return sensitivePatterns.some(p => p.test(body));
-    }
 }
 
 export default InfraScanner;
