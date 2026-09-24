@@ -705,6 +705,10 @@ Active probes use a repeatable three-variant request model: a normal baseline, a
 
 This engine powers SQL injection, XSS, authorization boundary checks, open redirects, SSRF, pricing manipulation, and email enumeration. Evidence stores the three request variants, representative responses, repeat stability, differential scores, and timing analysis so a reviewer can reproduce the result. Destructive business-logic mutations remain gated behind `--aggressive`.
 
+### Evidence-based CVSS v3.1 scoring
+
+CVSS is calculated only when a detector supplies all eight base metrics and an evidence reason for each selection. The score, vector, metric reasons, and verification level appear together in JSON, Markdown, HTML, and SARIF. A potential finding with detector metrics is labeled **provisional**; informational observations and findings without demonstrated impact show **CVSS not assessed**. Severity remains a separate triage label and never supplies missing CVSS values. The dashboard calculator is a manual preview and does not overwrite detector evidence.
+
 Every scan generates the following report formats, saved to `vibe-shield-reports/<timestamp>/`:
 
 | Format | File | Description |

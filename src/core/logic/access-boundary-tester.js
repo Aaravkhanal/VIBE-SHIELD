@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { observedWebCvss } from '../../utils/cvss-evidence.js';
 import { DifferentialEngine } from '../differential-engine.js';
 
 /**
@@ -94,6 +95,11 @@ export class AccessBoundaryTester {
                                 `2. Admin page loads without login requirement`,
                             ],
                             evidence: { url, status: response.status, differential: differential.evidence },
+                            cvssAssessment: observedWebCvss({
+                                metrics: { attackVector: 'NETWORK', attackComplexity: 'LOW', privilegesRequired: 'NONE', userInteraction: 'NONE', scope: 'UNCHANGED', confidentiality: 'LOW', integrity: 'NONE', availability: 'NONE' },
+                                request: `GET ${url}`, role: 'anonymous', observation: 'admin-specific page response',
+                                impacts: { confidentiality: 'The unauthenticated request returned admin-specific content; administrative actions were not tested.' },
+                            }),
                             verification: {
                                 level: 'high_confidence',
                                 reason: 'Repeated unauthenticated requests returned stable admin-specific content that was unique to the candidate endpoint.',
@@ -280,6 +286,11 @@ export class AccessBoundaryTester {
                                 `2. Server returns sensitive data`,
                             ],
                             evidence: { url: endpoint.url, method: endpoint.method, status: response.status, differential: differential.evidence },
+                            cvssAssessment: observedWebCvss({
+                                metrics: { attackVector: 'NETWORK', attackComplexity: 'LOW', privilegesRequired: 'NONE', userInteraction: 'NONE', scope: 'UNCHANGED', confidentiality: 'LOW', integrity: 'NONE', availability: 'NONE' },
+                                request: `GET ${endpoint.url}`, role: 'anonymous', observation: 'sensitive-data response',
+                                impacts: { confidentiality: 'The unauthenticated response included data matching the sensitive-data detector; the extent of disclosure was not measured.' },
+                            }),
                             verification: {
                                 level: 'high_confidence',
                                 reason: 'Repeated unauthenticated requests returned a stable sensitive-data response that differed from the control mutation.',

@@ -9,7 +9,7 @@ import { applyScanEvent, completeScan, validateScanRequest } from './utils/scan-
 import { randomId } from './utils/id.js';
 import { generateAutoPatch } from './utils/patch-generator.js';
 import { calculateSecurityScore, generateSvgBadge } from './utils/security-score.js';
-import { calculateCvss, parseCvssVector, inferCvssForFinding } from './utils/cvss-calculator.js';
+import { calculateCvss, parseCvssVector, assessedCvssForFinding } from './utils/cvss-calculator.js';
 import { generateHardeningBundle } from './utils/waf-generator.js';
 import { OWASP_LLM_TAXONOMY, evaluateAiThreatMatrix } from './utils/ai-threat-matrix.js';
 import { normalizeVerification } from './utils/finding.js';
@@ -528,15 +528,6 @@ const server = http.createServer(async (req, res) => {
             return res.end(JSON.stringify({ error: 'Scan ID not found' }));
         }
 
-        // Enrich findings with CVSS if not already present
-        if (scanData.report && Array.isArray(scanData.report.findings)) {
-            scanData.report.findings.forEach(f => {
-                if (!f.cvss) {
-                    f.cvss = inferCvssForFinding(f);
-                }
-            });
-        }
-
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify(scanData));
     }
@@ -599,7 +590,8 @@ const server = http.createServer(async (req, res) => {
                 } else if (payload.metrics) {
                     result = calculateCvss(payload.metrics);
                 } else if (payload.finding) {
-                    result = inferCvssForFinding(payload.finding);
+                    result = assessedCvssForFinding(payload.finding);
+                    if (!result) throw new Error('This finding has no detector-supplied CVSS assessment');
                 } else {
                     result = calculateCvss(payload);
                 }
@@ -706,7 +698,7 @@ const server = http.createServer(async (req, res) => {
                     vectorId: category.id,
                     title: category.title,
                     severity: category.severity,
-                    cvss: category.cvss,
+                    cvss: null,
                     timestamp: new Date().toISOString(),
                     simulation: category.simulation,
                     tokensConsumed: null,
@@ -969,7 +961,7 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
 
         // Build top findings
         const topFindings = rawFindings.slice(0, 8).map(f => {
-            const cvss = inferCvssForFinding(f);
+            const cvss = assessedCvssForFinding(f);
             const verification = f.verification || normalizeVerification(null, f);
             return {
                 id: f.id || randomId(6),
@@ -979,8 +971,8 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                 description: f.description || f.issue || 'Identified during automated surface probing.',
                 impact: f.impact || 'Potential risk of unauthorized data exposure or service degradation.',
                 remediation: f.remediation || f.fix || 'Implement strict input validation and least-privilege access controls.',
-                cvssScore: cvss.score,
-                cvssVector: cvss.vector,
+                cvssScore: cvss?.score ?? null,
+                cvssVector: cvss?.vectorString ?? null,
                 verification: {
                     level: verification.level,
                     label: verification.label,

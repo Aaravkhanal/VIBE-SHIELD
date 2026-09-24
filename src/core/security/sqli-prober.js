@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { createFinding } from '../../utils/finding.js';
 import { collectParamNames } from '../../utils/param-discovery.js';
 import { DifferentialEngine } from '../differential-engine.js';
+import { observedWebCvss } from '../../utils/cvss-evidence.js';
 
 /**
  * SQLi Prober — Tests query-bearing inputs for SQL/NoSQL injection vulnerabilities.
@@ -192,6 +193,11 @@ export class SQLiProber {
                             `3. Error signature: ${errorMatch}`,
                         ],
                         evidence: JSON.stringify({ param, payload: name, errorSignature: errorMatch, responseSnippet: body.substring(0, 300), differential: differential.evidence }),
+                        cvssAssessment: observedWebCvss({
+                            metrics: { attackVector: 'NETWORK', attackComplexity: 'LOW', privilegesRequired: 'NONE', userInteraction: 'NONE', scope: 'UNCHANGED', confidentiality: 'LOW', integrity: 'NONE', availability: 'NONE' },
+                            request: `GET ${testUrl}`, role: 'anonymous', observation: 'database error response',
+                            impacts: { confidentiality: `The payload exposed the database error signature ${errorMatch}; no records were extracted.` },
+                        }),
                         verification: {
                             level: 'high_confidence',
                             reason: `A database-specific error signature appeared after the ${name} mutation.`,

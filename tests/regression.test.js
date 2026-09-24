@@ -15,6 +15,9 @@ import { domainMetadata, organizationScopes } from '../src/utils/domain-scope.js
 import { SubdomainScanner } from '../src/core/security/subdomain-scanner.js';
 import { InfraScanner } from '../src/core/security/infra-scanner.js';
 import { DifferentialEngine } from '../src/core/differential-engine.js';
+import { calculateCvss, parseCvssVector } from '../src/utils/cvss-calculator.js';
+import { observedWebCvss } from '../src/utils/cvss-evidence.js';
+import { generateSARIF } from '../src/reporting/sarif-generator.js';
 
 const report = (target = 'http://fixture.test/') => ({ meta: { target, modules: ['security'], scannedAt: new Date().toISOString() }, coverage: { status: 'complete' }, agents: {}, surfaceInventory: { totalPages: 1 }, summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0, info: 0 }, findings: [] });
 const scan = (scanId = 'test') => ({ scanId, url: 'http://fixture.test/', startTime: Date.now(), agents: { 'VIBE-SHIELD-SEC': { status: 'pending' } }, terminalLogs: [] });
@@ -82,6 +85,29 @@ test('every finding carries a conservative verification level', () => {
     });
 });
 
+test('CVSS requires detector metrics and evidence reasons; potential scores remain provisional', () => {
+    const unscored = createFinding({ module: 'security', title: 'SQL Injection', severity: 'critical', affected_surface: 'https://fixture.test', description: 'Title only' });
+    assert.equal(unscored.cvss, null);
+
+    const assessment = observedWebCvss({
+        metrics: { attackVector: 'NETWORK', attackComplexity: 'LOW', privilegesRequired: 'NONE', userInteraction: 'NONE', scope: 'UNCHANGED', confidentiality: 'LOW', integrity: 'NONE', availability: 'NONE' },
+        request: 'GET https://fixture.test/search?q=quote', role: 'anonymous', observation: 'database error response',
+        impacts: { confidentiality: 'The response disclosed a database error signature.' },
+    });
+    const finding = createFinding({ module: 'security', title: 'Database error', severity: 'high', affected_surface: 'https://fixture.test', description: 'Controlled error', cvssAssessment: assessment });
+    assert.equal(finding.cvss.scoreStatus, 'provisional');
+    assert.equal(finding.cvss.scoringConfidence, 'potential');
+    assert.equal(finding.cvss.selectedMetrics.confidentiality, 'LOW');
+    assert.match(finding.cvss.reasons.confidentiality, /database error signature/);
+    assert.equal(parseCvssVector(finding.cvss.vectorString).score, finding.cvss.score);
+    const sarifRule = generateSARIF([finding]).runs[0].tool.driver.rules[0];
+    assert.equal(sarifRule.properties['security-severity'], finding.cvss.score);
+    assert.equal(sarifRule.properties.precision, 'medium');
+    assert.equal(calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'H' }).score, '9.8');
+    assert.throws(() => parseCvssVector('CVSS:3.1/AV:N/AC:L'), /all eight/);
+    assert.throws(() => createFinding({ module: 'security', title: 'Bad metrics', severity: 'high', cvssAssessment: { metrics: assessment.metrics, reasons: {} } }), /requires a valid value and evidence reason/);
+});
+
 test('confirmed findings require complete replayable proof and redact secrets', () => {
     const incomplete = normalizeVerification({ level: 'confirmed', proof: { trace: { executed: true } } }, { severity: 'high', evidence: 'marker' });
     assert.equal(incomplete.level, 'high_confidence');
@@ -129,6 +155,8 @@ test('all report formats use deduplicated counts, escaped target and coverage', 
     assert.equal(json.verificationSummary.potential, 1);
     const sarif = JSON.parse(fs.readFileSync(path.join(root, 'report.sarif'), 'utf8'));
     assert.equal(sarif.runs[0].results[0].properties.verificationLevel, 'potential');
+    assert.equal(sarif.runs[0].tool.driver.rules[0].properties['security-severity'], undefined);
+    assert.match(fs.readFileSync(path.join(root, 'report.md'), 'utf8'), /CVSS v3\.1:\*\* Not assessed/);
     for (const file of ['report.json', 'report.md', 'report.sarif']) assert.ok(fs.existsSync(path.join(root, file)), file);
 });
 

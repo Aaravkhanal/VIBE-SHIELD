@@ -58,16 +58,13 @@ export function roundup(val) {
 /**
  * Calculate CVSS v3.1 Base Score and subscores from metric selections
  */
-export function calculateCvss({
-    AV = 'N',
-    AC = 'L',
-    PR = 'N',
-    UI = 'N',
-    S = 'U',
-    C = 'H',
-    I = 'H',
-    A = 'N'
-} = {}) {
+export function calculateCvss({ AV, AC, PR, UI, S, C, I, A } = {}) {
+    const supplied = { AV, AC, PR, UI, S, C, I, A };
+    for (const [name, value] of Object.entries(supplied)) {
+        if (typeof value !== 'string' || !CVSS_METRIC_WEIGHTS[name][value.toUpperCase()]) {
+            throw new Error(`Invalid or missing CVSS metric ${name}`);
+        }
+    }
     // Normalize keys
     const av = AV.toUpperCase();
     const ac = AC.toUpperCase();
@@ -160,9 +157,7 @@ export function calculateCvss({
  * Parse a standard CVSS v3.1 vector string into metrics and calculate the score
  */
 export function parseCvssVector(vectorString) {
-    if (!vectorString || typeof vectorString !== 'string') {
-        return calculateCvss();
-    }
+    if (!vectorString || typeof vectorString !== 'string') throw new Error('A CVSS v3.1 vector is required');
 
     const metrics = {};
     const parts = vectorString.split('/');
@@ -173,60 +168,49 @@ export function parseCvssVector(vectorString) {
         }
     }
 
+    if (Object.keys(metrics).length !== 8) throw new Error('A CVSS v3.1 vector must contain all eight base metrics');
     return calculateCvss(metrics);
 }
 
 /**
- * Infer intelligent, realistic CVSS v3.1 metrics for any given finding
+ * Score only detector-supplied metrics. Each reason must point to the observed
+ * request, response, browser behavior, or access context supporting the value.
  */
-export function inferCvssForFinding(finding = {}) {
-    const title = (finding.title || '').toLowerCase();
-    const desc = (finding.description || '').toLowerCase();
-    const module = (finding.module || finding.agent || '').toLowerCase();
-    const severity = (finding.severity || 'low').toLowerCase();
+export function scoreCvssAssessment(assessment, verificationLevel = 'potential') {
+    if (!assessment) return null;
+    const { metrics, reasons } = assessment;
+    const names = { attackVector: 'AV', attackComplexity: 'AC', privilegesRequired: 'PR', userInteraction: 'UI', scope: 'S', confidentiality: 'C', integrity: 'I', availability: 'A' };
+    const values = {
+        AV: { NETWORK: 'N', ADJACENT: 'A', LOCAL: 'L', PHYSICAL: 'P' },
+        AC: { LOW: 'L', HIGH: 'H' },
+        PR: { NONE: 'N', LOW: 'L', HIGH: 'H' },
+        UI: { NONE: 'N', REQUIRED: 'R' },
+        S: { UNCHANGED: 'U', CHANGED: 'C' },
+        C: { NONE: 'N', LOW: 'L', HIGH: 'H' },
+        I: { NONE: 'N', LOW: 'L', HIGH: 'H' },
+        A: { NONE: 'N', LOW: 'L', HIGH: 'H' },
+    };
+    const vector = {};
+    for (const [name, code] of Object.entries(names)) {
+        const chosen = metrics?.[name];
+        vector[code] = values[code][chosen];
+        if (!vector[code] || typeof reasons?.[name] !== 'string' || !reasons[name].trim()) {
+            throw new Error(`CVSS ${name} requires a valid value and evidence reason`);
+        }
+    }
+    const scored = calculateCvss(vector);
+    return {
+        ...scored,
+        rawMetrics: vector,
+        selectedMetrics: { ...metrics },
+        reasons: { ...reasons },
+        scoringConfidence: verificationLevel,
+        scoreStatus: verificationLevel === 'confirmed' || verificationLevel === 'high_confidence' ? 'evidence_based' : 'provisional',
+    };
+}
 
-    // Specific vulnerability heuristics
-    if (title.includes('prompt injection') || title.includes('jailbreak') || title.includes('system prompt')) {
-        return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'C', C: 'H', I: 'H', A: 'N' }); // 9.3 Critical
-    }
-    if (title.includes('sql injection') || title.includes('sqli') || desc.includes('database query')) {
-        return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'H' }); // 9.8 Critical
-    }
-    if (title.includes('ssrf') || title.includes('server-side request forgery')) {
-        return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'C', C: 'H', I: 'L', A: 'N' }); // 9.3 Critical
-    }
-    if (title.includes('cors') || title.includes('origin')) {
-        return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'H', I: 'L', A: 'N' }); // 7.1 High
-    }
-    if (title.includes('api key') || title.includes('secret') || title.includes('token') || title.includes('exposed credential')) {
-        return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'N', A: 'N' }); // 7.5 High
-    }
-    if (title.includes('rate limit') || title.includes('dos') || title.includes('denial of service')) {
-        return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'N', I: 'N', A: 'H' }); // 7.5 High
-    }
-    if (title.includes('content-security-policy') || title.includes('csp') || title.includes('hsts') || title.includes('header')) {
-        return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'L', A: 'N' }); // 5.4 Medium
-    }
-    if (title.includes('cookie') || title.includes('httponly') || title.includes('samesite')) {
-        return calculateCvss({ AV: 'N', AC: 'H', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'N', A: 'N' }); // 3.1 Low
-    }
-    if (title.includes('auth') || title.includes('jwt') || title.includes('bypass')) {
-        return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'N' }); // 9.1 Critical
-    }
-
-    // Default by severity tier
-    switch (severity) {
-        case 'critical':
-            return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'H' }); // 9.8 Critical
-        case 'high':
-            return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'N', A: 'N' }); // 7.5 High
-        case 'medium':
-            return calculateCvss({ AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'L', A: 'N' }); // 5.4 Medium
-        case 'low':
-            return calculateCvss({ AV: 'N', AC: 'H', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'N', A: 'N' }); // 3.1 Low
-        default:
-            return calculateCvss({ AV: 'N', AC: 'H', PR: 'L', UI: 'R', S: 'U', C: 'N', I: 'N', A: 'N' }); // 0.0 None
-    }
+export function assessedCvssForFinding(finding = {}) {
+    return finding.cvss?.scoreStatus && finding.cvss?.reasons ? finding.cvss : null;
 }
 
 export default {
@@ -234,5 +218,6 @@ export default {
     roundup,
     calculateCvss,
     parseCvssVector,
-    inferCvssForFinding
+    assessedCvssForFinding,
+    scoreCvssAssessment
 };

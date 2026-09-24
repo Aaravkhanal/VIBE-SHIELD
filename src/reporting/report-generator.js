@@ -239,6 +239,9 @@ export class ReportGenerator {
         md += `**Status:** ${f.status}  \n\n`;
         md += `**Verification:** ${verification.label} — ${verification.reason}  \n`;
         md += `**Method:** ${verification.method}  \n\n`;
+        md += f.cvss?.scoreStatus && f.cvss?.reasons
+          ? `**CVSS v3.1:** ${f.cvss.score} (${f.cvss.vectorString}) — ${f.cvss.scoreStatus === 'provisional' ? 'provisional assessment' : 'evidence-based assessment'}\n\n**Metric reasons:**\n${Object.entries(f.cvss.reasons).map(([metric, reason]) => `- ${metric}: ${reason}`).join('\n')}\n\n`
+          : `**CVSS v3.1:** Not assessed; the detector did not establish all base metrics.\n\n`;
         md += `${f.description}\n\n`;
 
         if (Object.keys(verification.proof || {}).length > 1) {
@@ -462,6 +465,7 @@ export class ReportGenerator {
       <div class="finding-title">${this._escapeHtml(f.title)}</div>
       <div class="finding-desc">${this._escapeHtml(f.description)}</div>
       <div class="verification-copy"><strong>${this._escapeHtml(verification.label)}:</strong> ${this._escapeHtml(verification.reason)}<br><strong>Method:</strong> ${this._escapeHtml(verification.method)}</div>
+      <div class="verification-copy"><strong>CVSS v3.1:</strong> ${f.cvss?.scoreStatus && f.cvss?.reasons ? `${this._escapeHtml(f.cvss.score)} · ${this._escapeHtml(f.cvss.vectorString)} · ${f.cvss.scoreStatus === 'provisional' ? 'Provisional' : 'Evidence based'}` : 'Not assessed; impact metrics were not established.'}</div>
       <div style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem">
         <strong>Affected:</strong> ${this._escapeHtml(f.affected_surface)}
         ${f.owasp ? `<span style="margin-left:1rem;padding:2px 6px;border-radius:3px;background:#1a1a25;color:#00ff88;font-size:0.7rem;font-weight:bold">${f.owasp.id} ${this._escapeHtml(f.owasp.name)}</span>` : ''}
@@ -473,6 +477,7 @@ export class ReportGenerator {
         <pre>${this._escapeHtml(f.reproduction?.join?.('\n') || '')}</pre>
         ${f.evidence ? `<pre>${this._escapeHtml(typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence, null, 2))}</pre>` : ''}
         ${Object.keys(verification.proof || {}).length > 1 ? `<pre>${this._escapeHtml(JSON.stringify(verification.proof, null, 2))}</pre>` : ''}
+        ${f.cvss?.reasons ? `<pre>${this._escapeHtml(JSON.stringify(f.cvss.reasons, null, 2))}</pre>` : ''}
         ${verification.missingEvidence?.length ? `<p style="font-size:.75rem;color:var(--text-dim);margin-top:.5rem"><strong>Evidence gaps:</strong> ${this._escapeHtml(verification.missingEvidence.join(', '))}</p>` : ''}
       </details>
     </div>`;

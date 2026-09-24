@@ -714,49 +714,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return calculateCvssClient(metrics);
     }
 
-    function inferCvssClient(finding) {
-        if (finding.cvss && finding.cvss.vectorString) {
-            return parseCvssVectorClient(finding.cvss.vectorString);
-        }
-        const title = (finding.title || '').toLowerCase();
-        const desc = (finding.description || '').toLowerCase();
-        const sev = (finding.severity || 'low').toLowerCase();
-
-        if (title.includes('prompt injection') || title.includes('jailbreak') || title.includes('system prompt')) {
-            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'C', C: 'H', I: 'H', A: 'N' });
-        }
-        if (title.includes('sql injection') || title.includes('sqli')) {
-            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'H' });
-        }
-        if (title.includes('ssrf') || title.includes('server-side request forgery')) {
-            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'C', C: 'H', I: 'L', A: 'N' });
-        }
-        if (title.includes('cors') || title.includes('origin')) {
-            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'H', I: 'L', A: 'N' });
-        }
-        if (title.includes('api key') || title.includes('secret') || title.includes('token') || title.includes('credential')) {
-            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'N', A: 'N' });
-        }
-        if (title.includes('rate limit') || title.includes('dos') || title.includes('denial of service')) {
-            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'N', I: 'N', A: 'H' });
-        }
-        if (title.includes('content-security-policy') || title.includes('csp') || title.includes('hsts') || title.includes('header')) {
-            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'L', A: 'N' });
-        }
-        if (title.includes('cookie') || title.includes('httponly') || title.includes('samesite')) {
-            return calculateCvssClient({ AV: 'N', AC: 'H', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'N', A: 'N' });
-        }
-        if (title.includes('auth') || title.includes('jwt') || title.includes('bypass')) {
-            return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'N' });
-        }
-
-        switch (sev) {
-            case 'critical': return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'H', A: 'H' });
-            case 'high': return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'H', I: 'N', A: 'N' });
-            case 'medium': return calculateCvssClient({ AV: 'N', AC: 'L', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'L', A: 'N' });
-            case 'low': return calculateCvssClient({ AV: 'N', AC: 'H', PR: 'N', UI: 'R', S: 'U', C: 'L', I: 'N', A: 'N' });
-            default: return calculateCvssClient({ AV: 'N', AC: 'H', PR: 'L', UI: 'R', S: 'U', C: 'N', I: 'N', A: 'N' });
-        }
+    function assessedCvssClient(finding) {
+        return finding?.cvss?.scoreStatus && finding.cvss?.reasons ? finding.cvss : null;
     }
 
     // ═══════════════════════════════════════════════
@@ -785,11 +744,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const tr = document.createElement('tr');
             const sev = (f.severity || 'low').toLowerCase();
             const sevClass = 'pill-' + sev;
-            const cvssData = f.cvss || inferCvssClient(f);
-            f.cvss = cvssData; // Cache on finding object
+            const cvssData = assessedCvssClient(f);
 
-            const cvssPillClass = 'cvss-' + (cvssData.severity ? cvssData.severity.toLowerCase() : sev);
-            const scoreDisplay = cvssData.score || '0.0';
+            const cvssPillClass = 'cvss-' + (cvssData?.severity ? cvssData.severity.toLowerCase() : 'unassessed');
+            const scoreDisplay = cvssData?.score || 'Not assessed';
             const remediationText = f.remediation || f.description || 'Review application code and enforce strict input validation.';
             const verification = f.verification || {
                 level: sev === 'info' ? 'informational' : 'potential',
@@ -814,14 +772,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>
                     <strong>${escapeHtml(f.title)}</strong>
                     <span class="cvss-vector-snippet open-cvss-btn" data-finding-index="${idx}" title="Click to inspect CVSS metrics">
-                        ${escapeHtml(cvssData.vectorString || 'CVSS:3.1/...')}
+                        ${escapeHtml(cvssData?.vectorString || 'CVSS not assessed')}${cvssData?.scoreStatus === 'provisional' ? ' · provisional' : ''}
                     </span>
                 </td>
                 <td><code>${escapeHtml(f.module || f.agent || 'Unknown')}</code></td>
                 <td>${escapeHtml(f.affected_surface || 'N/A')}</td>
                 <td>${escapeHtml(f.owasp?.id || (typeof f.owasp === 'string' ? f.owasp : 'Not mapped'))}</td>
                 <td style="max-width: 380px;">
-                    <details class="finding-remediation"><summary>Proof, evidence & remediation</summary><p><strong>${escapeHtml(verification.label)}:</strong> ${escapeHtml(verification.reason || '')}</p><pre>${escapeHtml(proofText)}</pre>${verification.missingEvidence?.length ? `<p><strong>Evidence gaps:</strong> ${escapeHtml(verification.missingEvidence.join(', '))}</p>` : ''}<p>${escapeHtml(remediationText)}</p><pre>${escapeHtml(typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence || {}, null, 2))}</pre></details>
+                    <details class="finding-remediation"><summary>Proof, evidence & remediation</summary><p><strong>${escapeHtml(verification.label)}:</strong> ${escapeHtml(verification.reason || '')}</p><pre>${escapeHtml(proofText)}</pre>${verification.missingEvidence?.length ? `<p><strong>Evidence gaps:</strong> ${escapeHtml(verification.missingEvidence.join(', '))}</p>` : ''}<p><strong>CVSS:</strong> ${cvssData ? `${escapeHtml(cvssData.score)} (${escapeHtml(cvssData.scoreStatus)})` : 'Not assessed; detector did not establish all impact metrics.'}</p>${cvssData?.reasons ? `<pre>${escapeHtml(JSON.stringify(cvssData.reasons, null, 2))}</pre>` : ''}<p>${escapeHtml(remediationText)}</p><pre>${escapeHtml(typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence || {}, null, 2))}</pre></details>
                     <div class="actions-cell-wrap">
                         <button type="button" class="btn-cvss-action open-cvss-btn" data-finding-index="${idx}">
                             🎯 CVSS Calc
@@ -870,6 +828,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cvssImpactScore = document.getElementById('cvss-impact-score');
     const cvssImpactBar = document.getElementById('cvss-impact-bar');
     const cvssVectorString = document.getElementById('cvss-vector-string');
+    const cvssAssessmentNote = document.getElementById('cvss-assessment-note');
     const cvssCopyVectorBtn = document.getElementById('cvss-copy-vector-btn');
     const cvssCopyVectorText = document.getElementById('cvss-copy-vector-text');
     const cvssCopyJsonBtn = document.getElementById('cvss-copy-json-btn');
@@ -952,11 +911,13 @@ document.addEventListener('DOMContentLoaded', () => {
             cvssFindingTitle.textContent = 'CVSS v3.1 Quantitative Score Calculator';
         }
 
-        const calculated = finding?.cvss?.rawMetrics 
-            ? finding.cvss 
-            : inferCvssClient(finding || {});
-
-        currentCvssMetrics = { ...calculated.rawMetrics };
+        const calculated = assessedCvssClient(finding);
+        currentCvssMetrics = calculated?.rawMetrics
+            ? { ...calculated.rawMetrics }
+            : { AV: 'N', AC: 'L', PR: 'N', UI: 'N', S: 'U', C: 'N', I: 'N', A: 'N' };
+        if (cvssAssessmentNote) cvssAssessmentNote.textContent = calculated
+            ? `${calculated.scoreStatus === 'provisional' ? 'Provisional' : 'Evidence based'} · ${finding.verification?.label || 'Verification unknown'} · Metrics explained below`
+            : 'No detector CVSS assessment. Any values selected here are a manual calculator preview.';
         updateCvssModalUi();
     }
 
@@ -1008,7 +969,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const descEl = document.getElementById(`desc-${metric}`);
             
             if (CVSS_SPEC[metric] && CVSS_SPEC[metric][currentVal] && descEl) {
-                descEl.textContent = CVSS_SPEC[metric][currentVal].desc || '';
+                const reasonKey = { AV: 'attackVector', AC: 'attackComplexity', PR: 'privilegesRequired', UI: 'userInteraction', S: 'scope', C: 'confidentiality', I: 'integrity', A: 'availability' }[metric];
+                descEl.textContent = activeCvssFinding?.cvss?.rawMetrics?.[metric] === currentVal
+                    ? activeCvssFinding.cvss.reasons?.[reasonKey] || CVSS_SPEC[metric][currentVal].desc || ''
+                    : CVSS_SPEC[metric][currentVal].desc || '';
             }
 
             group.querySelectorAll('.btn-metric').forEach(btn => {
@@ -1021,9 +985,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // If finding was active, sync back updated score
-        if (activeCvssFinding) {
-            activeCvssFinding.cvss = result;
-        }
+        // Calculator edits are exploratory; only detectors can publish scored findings.
     }
 
     // Copy Vector String
@@ -3309,7 +3271,7 @@ ${currentWafBundle.artifacts.docker || ''}
                         <span class="badge-vector-code">${vector.id}</span>
                         <div style="display:flex;gap:6px;align-items:center;">
                             <span class="badge ${sevClass}">${(vector.severity || 'HIGH').toUpperCase()}</span>
-                            <span class="badge" style="font-family:var(--font-mono);font-size:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);">CVSS ${vector.cvss}</span>
+                            <span class="badge" style="font-family:var(--font-mono);font-size:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);">${vector.cvss ? `CVSS ${escapeHtml(vector.cvss)}` : 'CVSS not assessed'}</span>
                         </div>
                     </div>
                     <div class="matrix-card-title">${escapeHtml(vector.title)}</div>
@@ -3339,7 +3301,7 @@ ${currentWafBundle.artifacts.docker || ''}
             this.modalEl.classList.remove('hidden');
             this.modalTitle.textContent = `${vector.id}: ${vector.title}`;
             this.threatId.textContent = vector.id;
-            this.threatSev.textContent = `${(vector.severity || 'HIGH').toUpperCase()} (CVSS ${vector.cvss})`;
+            this.threatSev.textContent = `${(vector.severity || 'HIGH').toUpperCase()} (${vector.cvss ? `CVSS ${vector.cvss}` : 'CVSS not assessed'})`;
             this.threatSev.className = `badge badge-${vector.severity || 'high'}`;
             
             const isVuln = vector.status === 'VULNERABLE';

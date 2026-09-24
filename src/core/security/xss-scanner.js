@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { createFinding } from '../../utils/finding.js';
 import { collectParamNames } from '../../utils/param-discovery.js';
 import { DifferentialEngine } from '../differential-engine.js';
+import { observedWebCvss } from '../../utils/cvss-evidence.js';
 
 function shellQuote(value) {
     return `'${String(value).replaceAll("'", `'\\''`)}'`;
@@ -168,6 +169,12 @@ export class XSSScanner {
                                         `3. Verify with DevTools: window.${marker} === 1`,
                                     ],
                                     evidence: JSON.stringify({ param, payload, name, executed: true, differential: differential.evidence }),
+                                    cvssAssessment: observedWebCvss({
+                                        metrics: { attackVector: 'NETWORK', attackComplexity: 'LOW', privilegesRequired: 'NONE', userInteraction: 'REQUIRED', scope: 'CHANGED', confidentiality: 'NONE', integrity: 'LOW', availability: 'NONE' },
+                                        request: `GET ${testUrl}`, role: 'anonymous', observation: 'browser marker execution',
+                                        boundary: 'The vulnerable server response caused code to execute in the visiting browser origin.',
+                                        impacts: { integrity: `The script set window.${marker} to 1 in the browser; data theft and persistence were not observed.` },
+                                    }),
                                     verification: {
                                         level: 'confirmed',
                                         reason: `The injected browser marker window.${marker} was observed with value 1 after navigation.`,

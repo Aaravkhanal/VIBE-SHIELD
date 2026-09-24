@@ -45,11 +45,16 @@ try {
     assert.equal(executedXss.verification.proof.responseDifference.vulnerableMarkerValue, 1);
     assert.match(executedXss.verification.proof.reproductionCommand, /playwright/);
     assert.equal(executedXss.verification.proof.trace.steps.at(-1).observedValue, 1);
+    assert.equal(executedXss.cvss.scoreStatus, 'evidence_based');
+    assert.equal(executedXss.cvss.selectedMetrics.userInteraction, 'REQUIRED');
+    assert.match(executedXss.cvss.reasons.integrity, /window\./);
     const escaped = new XSSScanner(); escaped._candidateParams = ['q'];
     await escaped._testURLParamReflection(context, { pages: [{ url: target + '/escaped', status: 200 }] });
     assert.equal(escaped.findings.length, 0, 'escaped payload must not be XSS');
     const sql = await new SQLiProber()._errorBasedTest(target + '/sql', 'q');
     assert.equal(sql.severity, 'critical');
+    assert.equal(sql.cvss.selectedMetrics.confidentiality, 'LOW');
+    assert.equal(sql.cvss.selectedMetrics.integrity, 'NONE');
     console.log('PASS: real browser crawl limit, executed XSS, escaped negative control, SQL error detection');
 
     const page = await context.newPage(); const pageErrors = [];

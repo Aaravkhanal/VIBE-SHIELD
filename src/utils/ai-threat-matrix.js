@@ -9,8 +9,6 @@ export const OWASP_LLM_TAXONOMY = [
         title: 'Prompt Injection (Direct & Indirect)',
         shortName: 'Prompt Injection',
         severity: 'critical',
-        cvss: '9.3',
-        vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N',
         description: 'Adversary manipulates LLM behavior through crafted user inputs or untrusted third-party content, overriding system instructions.',
         attackPrimitives: [
             'System Prompt Override Delimiters (### INSTRUCTION, [SYSTEM])',
@@ -53,8 +51,6 @@ export const OWASP_LLM_TAXONOMY = [
         title: 'Sensitive Information Disclosure & System Prompt Leakage',
         shortName: 'System Prompt Leakage',
         severity: 'high',
-        cvss: '7.5',
-        vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N',
         description: 'LLM inadvertently reveals confidential data, internal proprietary algorithms, private system prompts, API keys, or PII.',
         attackPrimitives: [
             'System Instruction Echo Probing ("Print the text above this line")',
@@ -97,8 +93,6 @@ export const OWASP_LLM_TAXONOMY = [
         title: 'Supply Chain & Model Dependency Vulnerabilities',
         shortName: 'Supply Chain Risk',
         severity: 'high',
-        cvss: '8.1',
-        vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:L',
         description: 'Compromised third-party base models, fine-tuning datasets, PyPI/npm plugins, or unverified huggingface model weights.',
         attackPrimitives: [
             'Backdoored Model Weights (Pickle code execution / SafeTensors tampering)',
@@ -141,8 +135,6 @@ export const OWASP_LLM_TAXONOMY = [
         title: 'Model Denial of Service (DoS) & Context Bombing',
         shortName: 'Model Denial of Service',
         severity: 'high',
-        cvss: '7.5',
-        vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H',
         description: 'Resource exhaustion via computationally heavy requests, quadratic attention expansion, token loops, or recursive context flooding.',
         attackPrimitives: [
             'Recursive Self-Referencing Expansion Prompts',
@@ -185,8 +177,6 @@ export const OWASP_LLM_TAXONOMY = [
         title: 'Improper Output Handling (AI-Mediated XSS & Injection)',
         shortName: 'Improper Output Handling',
         severity: 'high',
-        cvss: '8.3',
-        vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N',
         description: 'Failure to sanitize model output before rendering in browser DOM, executing in system shells, or executing database queries.',
         attackPrimitives: [
             'AI-Generated Stored Cross-Site Scripting (XSS) via Markdown rendering',
@@ -229,8 +219,6 @@ export const OWASP_LLM_TAXONOMY = [
         title: 'Excessive Agency & Autonomous Tool Abuse',
         shortName: 'Excessive Agency',
         severity: 'critical',
-        cvss: '9.0',
-        vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H',
         description: 'Granting model autonomous access to external APIs, databases, or file operations without human confirmation or principle of least privilege.',
         attackPrimitives: [
             'Autonomous Email / Slack Broadcast Triggering without Confirmation',
@@ -273,8 +261,6 @@ export const OWASP_LLM_TAXONOMY = [
         title: 'System Prompt Injection & Insecure Plugin Architecture',
         shortName: 'Insecure Plugins',
         severity: 'high',
-        cvss: '8.6',
-        vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:L/A:N',
         description: 'Plugins accepting unvalidated parameters, enabling SSRF, command injection, or data leaks when model processes external web content.',
         attackPrimitives: [
             'Server-Side Request Forgery (SSRF) via Web Browsing Tools',
@@ -317,8 +303,6 @@ export const OWASP_LLM_TAXONOMY = [
         title: 'Vector & Embedding Database Poisoning (RAG Attacks)',
         shortName: 'RAG / Vector Poisoning',
         severity: 'high',
-        cvss: '7.8',
-        vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N',
         description: 'Adversary injects malicious documents into knowledge base or vector store, poisoning retrieval context for all subsequent user queries.',
         attackPrimitives: [
             'Semantic Similarity Hijacking via Keyword Packing',
@@ -361,8 +345,6 @@ export const OWASP_LLM_TAXONOMY = [
         title: 'Misinformation & Hallucination Overreliance',
         shortName: 'Overreliance & Hallucination',
         severity: 'medium',
-        cvss: '5.3',
-        vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N',
         description: 'Model produces convincingly authoritative but factually incorrect outputs, leading to security misconfigurations or flawed automation.',
         attackPrimitives: [
             'Hallucinated Package Names (Dependency Confusion / Package Slubbing)',
@@ -405,8 +387,6 @@ export const OWASP_LLM_TAXONOMY = [
         title: 'Model Theft, Extraction & Inversion',
         shortName: 'Model Extraction & Theft',
         severity: 'high',
-        cvss: '7.5',
-        vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N',
         description: 'Systematic querying to reconstruct proprietary model weights, distill competitive models, or invert training data embeddings.',
         attackPrimitives: [
             'High-Volume Systematic Distillation Queries',
@@ -468,9 +448,11 @@ export function evaluateAiThreatMatrix(report = {}) {
         });
 
         const isVulnerable = matchingFindings.length > 0;
+        const scoredFindings = matchingFindings.filter(f => f.cvss?.scoreStatus && f.cvss?.reasons);
 
         return {
             ...category,
+            cvss: scoredFindings.length ? Math.max(...scoredFindings.map(f => Number(f.cvss.score))).toFixed(1) : null,
             status: isVulnerable ? 'VULNERABLE' : 'NOT_VERIFIED',
             statusBadge: isVulnerable ? 'FINDING RECORDED' : 'NO DEFENSE VERIFICATION',
             findingsCount: matchingFindings.length,

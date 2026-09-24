@@ -1,6 +1,6 @@
 import { randomId } from './id.js';
 import { tagFinding } from './owasp-mapper.js';
-import { inferCvssForFinding } from './cvss-calculator.js';
+import { scoreCvssAssessment } from './cvss-calculator.js';
 
 const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'info'];
 export const VERIFICATION_LEVELS = Object.freeze({
@@ -64,7 +64,8 @@ export function normalizeVerification(verification, { severity = 'info', evidenc
 
 /**
  * Creates a VIBE SHIELD Finding object matching the manifest schema.
- * Automatically tagged with OWASP Top 10 (2021) classification and CVSS v3.1 Quantitative Score.
+ * Automatically tagged with OWASP Top 10 (2021) classification. CVSS is
+ * available only when a detector supplies all metrics and evidence reasons.
  */
 export function createFinding({
     module = 'qa',
@@ -79,6 +80,7 @@ export function createFinding({
     status = 'open',
     source = null,
     cvss = null,
+    cvssAssessment = null,
     verification = null,
 }) {
     const prefix = module.toUpperCase();
@@ -103,8 +105,11 @@ export function createFinding({
         ...(source ? { source } : {}),
     };
 
-    // Calculate CVSS v3.1 score and vector
-    baseFinding.cvss = cvss || inferCvssForFinding(baseFinding);
+    baseFinding.cvss = cvssAssessment
+        ? scoreCvssAssessment(cvssAssessment, baseFinding.verification.level)
+        : cvss?.selectedMetrics && cvss?.reasons
+            ? scoreCvssAssessment({ metrics: cvss.selectedMetrics, reasons: cvss.reasons }, baseFinding.verification.level)
+            : null;
 
     // Auto-tag with OWASP Top 10 classification
     return tagFinding(baseFinding);

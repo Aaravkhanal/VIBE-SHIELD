@@ -78,7 +78,7 @@ export function generateSARIF(findings, meta = {}) {
                 properties: {
                     tags: [finding.module || 'security', finding.severity],
                     precision: verification.level === 'confirmed' ? 'very-high' : verification.level === 'high_confidence' ? 'high' : verification.level === 'potential' ? 'medium' : 'low',
-                    'security-severity': _cvssFromSeverity(finding.severity),
+                    ...(finding.cvss?.scoreStatus && finding.cvss?.reasons ? { 'security-severity': String(finding.cvss.score) } : {}),
                 },
             };
 
@@ -127,6 +127,7 @@ export function generateSARIF(findings, meta = {}) {
                 verificationMethod: verification.method,
                 verificationReason: verification.reason,
                 evidenceGaps: verification.missingEvidence,
+                cvss: finding.cvss?.scoreStatus ? finding.cvss : null,
             },
         };
 
@@ -268,14 +269,6 @@ function _matchCWE(finding) {
         if (text.includes(pattern)) return cwe;
     }
     return null;
-}
-
-/**
- * Map VIBE SHIELD severity to CVSS-like numeric score.
- */
-function _cvssFromSeverity(severity) {
-    const map = { critical: '9.8', high: '7.5', medium: '5.0', low: '2.5', info: '0.0' };
-    return map[severity] || '0.0';
 }
 
 export default { generateSARIF, writeSARIF };

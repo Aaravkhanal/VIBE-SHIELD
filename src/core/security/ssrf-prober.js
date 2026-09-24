@@ -1,5 +1,6 @@
 import { createFinding } from '../../utils/finding.js';
 import { DifferentialEngine } from '../differential-engine.js';
+import { observedWebCvss } from '../../utils/cvss-evidence.js';
 
 /**
  * SSRFProber — Tests URL parameters and form inputs for Server-Side Request Forgery.
@@ -93,6 +94,12 @@ export class SSRFProber {
                                         test_url: testUrl.toString(),
                                         differential: differential.evidence,
                                     },
+                                    cvssAssessment: observedWebCvss({
+                                        metrics: { attackVector: 'NETWORK', attackComplexity: 'LOW', privilegesRequired: 'NONE', userInteraction: 'NONE', scope: 'CHANGED', confidentiality: 'LOW', integrity: 'NONE', availability: 'NONE' },
+                                        request: `GET ${testUrl}`, role: 'anonymous', observation: `${payload.label} internal-resource response`,
+                                        boundary: 'The server fetched a resource outside the public web application boundary.',
+                                        impacts: { confidentiality: `The response included an ${payload.label} internal-resource indicator. Broad data access was not verified.` },
+                                    }),
                                     verification: {
                                         level: 'high_confidence',
                                         reason: 'Repeated internal-resource payloads produced a stable signal absent from both the normal request and harmless external control.',
