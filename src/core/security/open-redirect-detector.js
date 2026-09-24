@@ -86,6 +86,20 @@ export class OpenRedirectDetector {
                                         response_status: response.status,
                                         test_url: testUrl.toString(),
                                     },
+                                    verification: {
+                                        level: 'high_confidence',
+                                        reason: 'A controlled redirect parameter produced an external Location header.',
+                                        method: 'http-redirect-differential',
+                                        proof: {
+                                            originalRequest: { method: 'GET', url: page.url, parameter: key, value },
+                                            mutatedRequest: { method: 'GET', url: testUrl.toString(), parameter: key, payload },
+                                            baselineResponse: { originalValue: value },
+                                            vulnerableResponse: { status: response.status, location },
+                                            responseDifference: { externalRedirectIntroduced: true, destination: location },
+                                            reproductionCommand: `curl -i ${JSON.stringify(testUrl.toString())}`,
+                                            accountRole: 'anonymous',
+                                        },
+                                    },
                                     reproduction: [
                                         `Open: ${testUrl.toString()}`,
                                         `Observe redirect to: ${location}`,
@@ -153,6 +167,20 @@ export class OpenRedirectDetector {
                                         redirect_location: location,
                                         found_on_page: page.url,
                                         test_url: testUrl.toString(),
+                                    },
+                                    verification: {
+                                        level: 'high_confidence',
+                                        reason: 'A controlled link mutation produced an external Location header.',
+                                        method: 'http-redirect-differential',
+                                        proof: {
+                                            originalRequest: { method: 'GET', url: link },
+                                            mutatedRequest: { method: 'GET', url: testUrl.toString(), parameter: key, payload: 'https://evil.com' },
+                                            baselineResponse: { discoveredOnPage: page.url },
+                                            vulnerableResponse: { status: response.status, location },
+                                            responseDifference: { externalRedirectIntroduced: true, destination: location },
+                                            reproductionCommand: `curl -i ${JSON.stringify(testUrl.toString())}`,
+                                            accountRole: 'anonymous',
+                                        },
                                     },
                                     remediation:
                                         'Validate redirect URLs server-side with an allowlist of permitted domains.',

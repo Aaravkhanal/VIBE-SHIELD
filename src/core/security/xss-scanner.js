@@ -2,6 +2,25 @@ import { chromium } from 'playwright';
 import { createFinding } from '../../utils/finding.js';
 import { collectParamNames } from '../../utils/param-discovery.js';
 
+function shellQuote(value) {
+    return `'${String(value).replaceAll("'", `'\\''`)}'`;
+}
+
+function browserReplayCommand(url, marker) {
+    const script = [
+        "import { chromium } from 'playwright';",
+        'const browser = await chromium.launch({ headless: true });',
+        'const page = await browser.newPage();',
+        `await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded' });`,
+        `const value = await page.evaluate(() => window[${JSON.stringify(marker)}]);`,
+        "await page.screenshot({ path: 'vibe-shield-xss-reproduction.png', fullPage: true });",
+        "console.log(JSON.stringify({ marker: " + JSON.stringify(marker) + ", value }));",
+        'await browser.close();',
+        'if (value !== 1) process.exit(1);',
+    ].join(' ');
+    return `node --input-type=module -e ${shellQuote(script)}`;
+}
+
 /**
  * XSS Scanner — Probes all discovered input surfaces for Cross-Site Scripting.
  * Tests reflected, stored, and DOM-based XSS with a comprehensive payload library.
@@ -77,6 +96,16 @@ export class XSSScanner {
 
             const page = await context.newPage();
             try {
+                const baselineNavigation = await page.goto(pageData.url, {
+                    waitUntil: 'domcontentloaded',
+                    timeout: 10000,
+                });
+                const baselineTitle = await page.title().catch(() => pageData.title || null);
+                const testedMarkers = XSSScanner.PAYLOADS.slice(0, 3).map(item => item.marker);
+                const baselineMarkers = await page.evaluate(markers => Object.fromEntries(
+                    markers.map(marker => [marker, window[marker] ?? null])
+                ), testedMarkers).catch(() => Object.fromEntries(testedMarkers.map(marker => [marker, null])));
+
                 // Candidate params = discovered (forms/query/api) + fallback guesses
                 const testParams = this._candidateParams.length > 0
                     ? this._candidateParams
@@ -89,7 +118,7 @@ export class XSSScanner {
                         testUrl.searchParams.set(param, payload);
 
                         try {
-                            await page.goto(testUrl.toString(), {
+                            const navigation = await page.goto(testUrl.toString(), {
                                 waitUntil: 'domcontentloaded',
                                 timeout: 10000,
                             });
@@ -103,7 +132,7 @@ export class XSSScanner {
                                 return window[m] === 1;
                             }, marker).catch(() => false);
 
-                            if (executed) {
+                            if (executed && baselineMarkers[marker] !== 1) {
                                 this.findings.push(createFinding({
                                     module: 'security',
                                     title: `Reflected XSS via URL Parameter: ${param}`,
@@ -116,6 +145,33 @@ export class XSSScanner {
                                         `3. Verify with DevTools: window.${marker} === 1`,
                                     ],
                                     evidence: JSON.stringify({ param, payload, name, executed: true }),
+                                    verification: {
+                                        level: 'confirmed',
+                                        reason: `The injected browser marker window.${marker} was observed with value 1 after navigation.`,
+                                        method: 'browser-execution',
+                                        proof: {
+                                            originalRequest: { method: 'GET', url: pageData.url },
+                                            mutatedRequest: { method: 'GET', url: testUrl.toString(), parameter: param, payload },
+                                            baselineResponse: {
+                                                status: baselineNavigation?.status() || pageData.status,
+                                                url: pageData.url,
+                                                title: baselineTitle,
+                                                markerValue: baselineMarkers[marker],
+                                            },
+                                            vulnerableResponse: { status: navigation?.status() || null, finalUrl: page.url(), payloadReflected: isReflected },
+                                            responseDifference: { marker, baselineMarkerValue: baselineMarkers[marker], vulnerableMarkerValue: 1 },
+                                            trace: {
+                                                type: 'browser-execution-trace',
+                                                steps: [
+                                                    { action: 'navigate-baseline', url: pageData.url, markerValue: baselineMarkers[marker] },
+                                                    { action: 'navigate-mutated', url: testUrl.toString(), status: navigation?.status() || null },
+                                                    { action: 'evaluate', expression: `window.${marker}`, observedValue: 1 },
+                                                ],
+                                            },
+                                            reproductionCommand: browserReplayCommand(testUrl.toString(), marker),
+                                            accountRole: 'anonymous',
+                                        },
+                                    },
                                     remediation: 'HTML-encode all user input before rendering in the page. Use framework-provided escaping functions. Implement a Content-Security-Policy header to mitigate impact.',
                                     references: ['https://owasp.org/www-community/attacks/xss/', 'CWE-79'],
                                 }));
@@ -132,6 +188,20 @@ export class XSSScanner {
                                         `2. View page source — payload appears unencoded`,
                                     ],
                                     evidence: JSON.stringify({ param, payload, name, reflected: true, executed: false }),
+                                    verification: {
+                                        level: 'potential',
+                                        reason: 'The payload was reflected without encoding, but browser execution was not observed.',
+                                        method: 'reflection-heuristic',
+                                        proof: {
+                                            originalRequest: { method: 'GET', url: pageData.url },
+                                            mutatedRequest: { method: 'GET', url: testUrl.toString(), parameter: param, payload },
+                                            baselineResponse: { status: pageData.status, url: pageData.url },
+                                            vulnerableResponse: { status: navigation?.status() || null, finalUrl: page.url(), payloadReflected: true },
+                                            responseDifference: { payloadReflected: true, markerExecuted: false },
+                                            reproductionCommand: `curl -i ${JSON.stringify(testUrl.toString())}`,
+                                            accountRole: 'anonymous',
+                                        },
+                                    },
                                     remediation: 'All user input must be HTML-encoded before rendering. Even if the current payload is blocked, other payloads or browser contexts may succeed.',
                                     references: ['https://owasp.org/www-community/attacks/xss/', 'CWE-79'],
                                 }));
@@ -195,6 +265,21 @@ export class XSSScanner {
                                         `4. Payload appears unencoded in the response`,
                                     ],
                                     evidence: JSON.stringify({ form: form.id, field: field.name, payload: testPayload.name }),
+                                    verification: {
+                                        level: 'high_confidence',
+                                        reason: 'The submitted payload was returned unencoded after form submission; script execution was not observed.',
+                                        method: 'form-response-differential',
+                                        proof: {
+                                            originalRequest: { method: form.method || 'POST', url: form.action || form.page },
+                                            mutatedRequest: { method: form.method || 'POST', url: form.action || form.page, field: field.name, payload: testPayload.payload },
+                                            baselineResponse: { url: form.page },
+                                            vulnerableResponse: { finalUrl: page.url(), payloadReflected: true },
+                                            responseDifference: { field: field.name, unencodedPayloadPresent: true },
+                                            trace: { type: 'browser-form-submission', form: form.id, field: field.name },
+                                            reproductionCommand: `Open ${form.page} and submit ${field.name}=${JSON.stringify(testPayload.payload)}`,
+                                            accountRole: 'anonymous',
+                                        },
+                                    },
                                     remediation: 'Sanitize and HTML-encode all form inputs on both client and server side before rendering. Use parameterized queries for database storage.',
                                     references: ['https://owasp.org/www-community/attacks/xss/', 'CWE-79'],
                                 }));

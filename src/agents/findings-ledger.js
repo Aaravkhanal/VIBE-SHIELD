@@ -1,4 +1,4 @@
-import { sortFindings, severitySummary } from '../utils/finding.js';
+import { sortFindings, severitySummary, VERIFICATION_LEVELS } from '../utils/finding.js';
 
 /**
  * FindingsLedger — Shared state store for all agent findings.
@@ -16,6 +16,7 @@ export class FindingsLedger {
         this._findings = [];
         this._eventBus = eventBus;
         this._dedupeKeys = new Set();
+        this._dedupeFindings = new Map();
         this._groups = new Map();  // normalized title → group object
 
         if (eventBus) {
@@ -47,8 +48,19 @@ export class FindingsLedger {
     _ingest(finding) {
         // Level 1: Exact dedup (same title + same surface = skip entirely)
         const exactKey = `${finding.title}::${finding.affected_surface}`;
-        if (this._dedupeKeys.has(exactKey)) return false;
+        if (this._dedupeKeys.has(exactKey)) {
+            const existing = this._dedupeFindings.get(exactKey);
+            const existingRank = VERIFICATION_LEVELS[existing?.verification?.level]?.rank ?? 0;
+            const newRank = VERIFICATION_LEVELS[finding.verification?.level]?.rank ?? 0;
+            if (existing && newRank > existingRank) {
+                existing.verification = finding.verification;
+                existing.evidence = finding.evidence;
+                existing.reproduction = finding.reproduction;
+            }
+            return false;
+        }
         this._dedupeKeys.add(exactKey);
+        this._dedupeFindings.set(exactKey, finding);
         this._findings.push(finding);
 
         // Level 2: Group similar findings by normalized title + module
@@ -100,8 +112,13 @@ export class FindingsLedger {
         const deduped = [];
 
         for (const [, group] of this._groups) {
-            // Use the first finding as the base
-            const base = { ...group.findings[0] };
+            // Represent the group with its strongest available verification.
+            const representative = group.findings.reduce((best, current) => {
+                const bestRank = VERIFICATION_LEVELS[best.verification?.level]?.rank ?? 0;
+                const currentRank = VERIFICATION_LEVELS[current.verification?.level]?.rank ?? 0;
+                return currentRank > bestRank ? current : best;
+            }, group.findings[0]);
+            const base = { ...representative };
 
             if (group.occurrences > 1) {
                 // Enrich with group data
@@ -402,6 +419,24 @@ export class FindingsLedger {
             });
         }
 
+        // A chain cannot be more certain than its least-verified link. This
+        // prevents a heuristic component from turning into a "confirmed"
+        // exploitation claim merely because it correlates with another issue.
+        for (const correlation of correlations) {
+            const linked = correlation.findings.map(id => f.find(item => item.id === id)).filter(Boolean);
+            const levels = linked.map(item => item.verification?.level || (item.severity === 'info' ? 'informational' : 'potential'));
+            const level = levels.reduce((lowest, current) =>
+                (VERIFICATION_LEVELS[current]?.rank ?? 0) < (VERIFICATION_LEVELS[lowest]?.rank ?? 0) ? current : lowest,
+            levels[0] || 'potential');
+            correlation.verification = {
+                level,
+                label: VERIFICATION_LEVELS[level]?.label || 'Potential',
+                reason: `Attack-chain confidence is limited by the least-verified linked finding (${VERIFICATION_LEVELS[level]?.label || 'Potential'}).`,
+            };
+            if (level !== 'confirmed' && correlation.exploitation?.startsWith('Confirmed')) {
+                correlation.exploitation = `${VERIFICATION_LEVELS[level]?.label || 'Potential'} chain — executable components require further verification.`;
+            }
+        }
         return correlations;
     }
 

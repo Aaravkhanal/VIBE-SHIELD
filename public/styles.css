@@ -376,6 +376,12 @@ table.ft td { padding: 11px 14px; vertical-align: top; }
 .sev-badge.medium { background: #eff6ff; color: var(--accent-blue); }
 .sev-badge.low { background: #f0fdf4; color: var(--accent-green); }
 .sev-badge.info { background: var(--bg-muted); color: var(--text-muted); }
+.verification-pill { display: inline-block; white-space: nowrap; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 3px 7px; border: 1px solid var(--border-strong); border-radius: 999px; }
+.verification-confirmed { color: #15803d; border-color: #86efac; background: #f0fdf4; }
+.verification-high_confidence { color: #0369a1; border-color: #7dd3fc; background: #f0f9ff; }
+.verification-potential { color: #a16207; border-color: #fde047; background: #fefce8; }
+.verification-informational, .verification-not_assessed { color: var(--text-muted); background: var(--bg-muted); }
+.verification-method { display: block; margin-top: 4px; color: var(--text-faint); font-size: 9px; white-space: nowrap; }
 .finding-title { font-weight: 500; color: var(--text); margin-bottom: 2px; font-size: 12.5px; }
 .finding-sub { font-size: 11px; color: var(--text-faint); }
 .cvss-num { font-size: 12px; font-weight: 600; color: var(--text-muted); }
@@ -642,14 +648,15 @@ table.ft td { padding: 11px 14px; vertical-align: top; }
 }
 
 .results-main { min-width: 0; }
-table.ft { min-width: 1000px; table-layout: fixed; }
+table.ft { min-width: 1120px; table-layout: fixed; }
 table.ft th:nth-child(1) { width: 70px; }
 table.ft th:nth-child(2) { width: 85px; }
-table.ft th:nth-child(3) { width: 260px; }
-table.ft th:nth-child(4) { width: 85px; }
-table.ft th:nth-child(5) { width: 180px; }
-table.ft th:nth-child(6) { width: 90px; }
-table.ft th:nth-child(7) { width: 230px; }
+table.ft th:nth-child(3) { width: 120px; }
+table.ft th:nth-child(4) { width: 260px; }
+table.ft th:nth-child(5) { width: 85px; }
+table.ft th:nth-child(6) { width: 180px; }
+table.ft th:nth-child(7) { width: 90px; }
+table.ft th:nth-child(8) { width: 230px; }
 table.ft td { overflow-wrap: anywhere; }
 .cvss-vector-snippet { display: block; font-size: 10px; color: var(--text-muted); margin-top: 6px; }
 .finding-remediation summary { cursor: pointer; font-size: 12px; font-weight: 600; margin-bottom: 8px; }

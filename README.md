@@ -724,6 +724,23 @@ Every scan generates the following report formats, saved to `vibe-shield-reports
     "3. Observe the AI response contains the injection marker"
   ],
   "evidence": "Payload: Ignore all previous instructions...\n\nResponse: ROLE_OVERRIDE_SUCCESS...",
+  "verification": {
+    "level": "high_confidence",
+    "label": "High confidence",
+    "reason": "Controlled requests produced a repeatable security-relevant response change.",
+    "method": "repeated-response-differential",
+    "proof": {
+      "originalRequest": { "method": "POST", "url": "https://your-app.dev/api/chat" },
+      "mutatedRequest": { "method": "POST", "url": "https://your-app.dev/api/chat", "payload": "..." },
+      "baselineResponse": { "status": 200 },
+      "vulnerableResponse": { "status": 200, "marker": "ROLE_OVERRIDE_SUCCESS" },
+      "responseDifference": { "markerIntroduced": true },
+      "reproductionCommand": "curl ...",
+      "timestamp": "2026-03-05T02:30:00Z",
+      "accountRole": "anonymous"
+    },
+    "missingEvidence": ["screenshotOrTrace"]
+  },
   "remediation": "Implement strict system prompt boundaries...",
   "references": ["https://owasp.org/www-project-top-10-for-large-language-model-applications/"],
   "status": "open",
@@ -732,6 +749,18 @@ Every scan generates the following report formats, saved to `vibe-shield-reports
 ```
 
 Modules tag findings as: `qa`, `security`, `ai`, `logic`, or `api`.
+
+Every finding also carries a verification level:
+
+| Level | Meaning |
+|-------|---------|
+| `confirmed` | The exploit executed and the report contains a complete replayable proof bundle with observable impact |
+| `high_confidence` | Controlled requests produced a repeatable security-relevant response change |
+| `potential` | Heuristic evidence requires manual verification |
+| `informational` | Attack-surface discovery or configuration observation |
+| `not_assessed` | Required access, credentials, or scanner capability was unavailable |
+
+A requested `confirmed` level is automatically downgraded when its proof bundle is incomplete. Sensitive proof fields such as authorization headers, cookies, passwords, tokens, and API keys are redacted before reports are written.
 
 ---
 

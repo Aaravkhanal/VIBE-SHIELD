@@ -10,6 +10,7 @@ import { calculateSecurityScore, generateSvgBadge } from '../src/utils/security-
 import { completeScan, applyScanEvent, validateScanRequest } from '../src/utils/scan-state.js';
 import { Orchestrator } from '../src/agents/orchestrator.js';
 import { BaseAgent } from '../src/agents/base-agent.js';
+import { createFinding, normalizeVerification, verificationSummary } from '../src/utils/finding.js';
 
 const report = (target = 'http://fixture.test/') => ({ meta: { target, modules: ['security'], scannedAt: new Date().toISOString() }, coverage: { status: 'complete' }, agents: {}, surfaceInventory: { totalPages: 1 }, summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0, info: 0 }, findings: [] });
 const scan = (scanId = 'test') => ({ scanId, url: 'http://fixture.test/', startTime: Date.now(), agents: { 'VIBE-SHIELD-SEC': { status: 'pending' } }, terminalLogs: [] });
@@ -67,6 +68,33 @@ test('structured progress tracks errors, skips, and findings', () => {
     assert.equal(state.agents[agentName].status, 'error');
 });
 
+test('every finding carries a conservative verification level', () => {
+    const potential = createFinding({ module: 'security', title: 'Possible issue', severity: 'high', affected_surface: 'https://fixture.test', description: 'heuristic' });
+    const information = createFinding({ module: 'security', title: 'Surface found', severity: 'info', affected_surface: 'https://fixture.test', description: 'observed' });
+    assert.equal(potential.verification.level, 'potential');
+    assert.equal(information.verification.level, 'informational');
+    assert.deepEqual(verificationSummary([potential, information]), {
+        confirmed: 0, high_confidence: 0, potential: 1, informational: 1, not_assessed: 0, total: 2
+    });
+});
+
+test('confirmed findings require complete replayable proof and redact secrets', () => {
+    const incomplete = normalizeVerification({ level: 'confirmed', proof: { trace: { executed: true } } }, { severity: 'high', evidence: 'marker' });
+    assert.equal(incomplete.level, 'high_confidence');
+    assert.ok(incomplete.missingEvidence.includes('originalRequest'));
+
+    const complete = normalizeVerification({ level: 'confirmed', proof: {
+        originalRequest: { url: 'https://fixture.test', headers: { Authorization: 'Bearer private-token' } },
+        mutatedRequest: { url: 'https://fixture.test?q=payload' }, baselineResponse: { status: 200 },
+        vulnerableResponse: { status: 200 }, responseDifference: { markerExecuted: true },
+        trace: { marker: 'executed' }, reproductionCommand: 'curl https://fixture.test?q=payload',
+        timestamp: new Date().toISOString(), accountRole: 'anonymous'
+    } }, { severity: 'high', evidence: 'marker' });
+    assert.equal(complete.level, 'confirmed');
+    assert.equal(complete.proof.originalRequest.headers.Authorization, '[REDACTED]');
+    assert.deepEqual(complete.missingEvidence, []);
+});
+
 test('invalid scan inputs rejected before spawning', () => {
     assert.throws(() => validateScanRequest('file:///etc/passwd', ['security'], 10, 'passive'));
     assert.throws(() => validateScanRequest('https://test.test', ['bad'], 10, 'passive'));
@@ -91,6 +119,12 @@ test('all report formats use deduplicated counts, escaped target and coverage', 
     assert.match(html, /Findings \(1\)/); assert.match(html, /Coverage: incomplete/);
     assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
     assert.match(html, /first\nsecond/);
+    assert.match(html, /Verification Confidence/);
+    const json = JSON.parse(fs.readFileSync(path.join(root, 'report.json'), 'utf8'));
+    assert.equal(json.findings[0].verification.level, 'potential');
+    assert.equal(json.verificationSummary.potential, 1);
+    const sarif = JSON.parse(fs.readFileSync(path.join(root, 'report.sarif'), 'utf8'));
+    assert.equal(sarif.runs[0].results[0].properties.verificationLevel, 'potential');
     for (const file of ['report.json', 'report.md', 'report.sarif']) assert.ok(fs.existsSync(path.join(root, file)), file);
 });
 

@@ -12,6 +12,7 @@ import { calculateSecurityScore, generateSvgBadge } from './utils/security-score
 import { calculateCvss, parseCvssVector, inferCvssForFinding } from './utils/cvss-calculator.js';
 import { generateHardeningBundle } from './utils/waf-generator.js';
 import { OWASP_LLM_TAXONOMY, evaluateAiThreatMatrix } from './utils/ai-threat-matrix.js';
+import { normalizeVerification } from './utils/finding.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -953,6 +954,7 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
         // Build top findings
         const topFindings = rawFindings.slice(0, 8).map(f => {
             const cvss = inferCvssForFinding(f);
+            const verification = f.verification || normalizeVerification(null, f);
             return {
                 id: f.id || randomId(6),
                 title: f.title || f.name || 'Security Finding',
@@ -962,7 +964,15 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                 impact: f.impact || 'Potential risk of unauthorized data exposure or service degradation.',
                 remediation: f.remediation || f.fix || 'Implement strict input validation and least-privilege access controls.',
                 cvssScore: cvss.score,
-                cvssVector: cvss.vector
+                cvssVector: cvss.vector,
+                verification: {
+                    level: verification.level,
+                    label: verification.label,
+                    reason: verification.reason,
+                    method: verification.method,
+                    proof: verification.proof,
+                    missingEvidence: verification.missingEvidence,
+                }
             };
         });
 

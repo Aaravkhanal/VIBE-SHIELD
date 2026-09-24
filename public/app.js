@@ -769,7 +769,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '';
 
         if (!findings || findings.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No findings at the configured threshold. Review scan coverage before drawing conclusions.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No findings at the configured threshold. Review scan coverage before drawing conclusions.</td></tr>`;
             return;
         }
 
@@ -783,6 +783,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const cvssPillClass = 'cvss-' + (cvssData.severity ? cvssData.severity.toLowerCase() : sev);
             const scoreDisplay = cvssData.score || '0.0';
             const remediationText = f.remediation || f.description || 'Review application code and enforce strict input validation.';
+            const verification = f.verification || {
+                level: sev === 'info' ? 'informational' : 'potential',
+                label: sev === 'info' ? 'Informational' : 'Potential',
+                reason: sev === 'info' ? 'Attack-surface or configuration observation.' : 'Heuristic evidence requires manual verification.',
+                method: sev === 'info' ? 'observation' : 'heuristic',
+                proof: {},
+                missingEvidence: []
+            };
+            const proofText = Object.keys(verification.proof || {}).length > 1
+                ? JSON.stringify(verification.proof, null, 2)
+                : 'No structured proof bundle was recorded.';
 
             tr.innerHTML = `
                 <td>
@@ -791,6 +802,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </button>
                 </td>
                 <td><span class="badge ${sevClass}">${sev.toUpperCase()}</span></td>
+                <td><span class="verification-pill verification-${escapeHtml(verification.level)}">${escapeHtml(verification.label)}</span><span class="verification-method">${escapeHtml(verification.method || '')}</span></td>
                 <td>
                     <strong>${escapeHtml(f.title)}</strong>
                     <span class="cvss-vector-snippet open-cvss-btn" data-finding-index="${idx}" title="Click to inspect CVSS metrics">
@@ -801,7 +813,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${escapeHtml(f.affected_surface || 'N/A')}</td>
                 <td>${escapeHtml(f.owasp?.id || (typeof f.owasp === 'string' ? f.owasp : 'Not mapped'))}</td>
                 <td style="max-width: 380px;">
-                    <details class="finding-remediation"><summary>Remediation & evidence</summary><p>${escapeHtml(remediationText)}</p><pre>${escapeHtml(typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence || {}, null, 2))}</pre></details>
+                    <details class="finding-remediation"><summary>Proof, evidence & remediation</summary><p><strong>${escapeHtml(verification.label)}:</strong> ${escapeHtml(verification.reason || '')}</p><pre>${escapeHtml(proofText)}</pre>${verification.missingEvidence?.length ? `<p><strong>Evidence gaps:</strong> ${escapeHtml(verification.missingEvidence.join(', '))}</p>` : ''}<p>${escapeHtml(remediationText)}</p><pre>${escapeHtml(typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence || {}, null, 2))}</pre></details>
                     <div class="actions-cell-wrap">
                         <button type="button" class="btn-cvss-action open-cvss-btn" data-finding-index="${idx}">
                             🎯 CVSS Calc
@@ -3951,7 +3963,7 @@ runSecurityGate();`;
             document.getElementById('exec-meta-score').textContent = posture.score == null ? 'Not scored' : `${posture.score}/100 (${posture.grade})`;
             for (const severity of ['critical', 'high', 'medium', 'low']) document.getElementById(`exec-count-${severity}`).textContent = posture.summary?.[severity] ?? 0;
             document.getElementById('exec-findings-detail').innerHTML = `<p class="report-scope">${escapeHtml(posture.riskStatement)}</p>` +
-                (data.topFindings?.length ? data.topFindings.map(f => `<article class="report-finding"><span class="report-severity">${escapeHtml(f.severity)}</span><h3>${escapeHtml(f.title)}</h3><p>${escapeHtml(f.description)}</p><p><strong>Recommended fix:</strong> ${escapeHtml(f.remediation)}</p></article>`).join('') : '<p>No findings recorded at the selected threshold. Review scan coverage.</p>');
+                (data.topFindings?.length ? data.topFindings.map(f => `<article class="report-finding"><span class="report-severity">${escapeHtml(f.severity)}</span><span class="verification-pill verification-${escapeHtml(f.verification?.level || 'potential')}">${escapeHtml(f.verification?.label || 'Potential')}</span><h3>${escapeHtml(f.title)}</h3><p><strong>Verification:</strong> ${escapeHtml(f.verification?.reason || 'Heuristic evidence requires review.')}</p><p>${escapeHtml(f.description)}</p><p><strong>Recommended fix:</strong> ${escapeHtml(f.remediation)}</p></article>`).join('') : '<p>No findings recorded at the selected threshold. Review scan coverage.</p>');
         }
 
         async copyMarkdownBriefing() {
@@ -4334,4 +4346,3 @@ ${(d.roadmap || []).map(r => `- **${r.phase}:** ${r.action} *(Owner: ${r.owner})
         return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 });
-

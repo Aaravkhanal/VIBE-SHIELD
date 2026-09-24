@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { getVersion } from '../utils/version.js';
+import { normalizeVerification } from '../utils/finding.js';
 
 /**
  * SARIF Generator — Generates Static Analysis Results Interchange Format (SARIF) v2.1.0
@@ -59,6 +60,7 @@ export function generateSARIF(findings, meta = {}) {
     const ruleIndex = new Map();
 
     for (const finding of findings) {
+        const verification = finding.verification || normalizeVerification(null, finding);
         // Build rule ID
         const ruleId = finding.id || `VIBE SHIELD-${finding.module?.toUpperCase()}-0000`;
 
@@ -75,7 +77,7 @@ export function generateSARIF(findings, meta = {}) {
                 helpUri: finding.references?.[0] || 'https://owasp.org/www-project-top-ten/',
                 properties: {
                     tags: [finding.module || 'security', finding.severity],
-                    precision: 'medium',
+                    precision: verification.level === 'confirmed' ? 'very-high' : verification.level === 'high_confidence' ? 'high' : verification.level === 'potential' ? 'medium' : 'low',
                     'security-severity': _cvssFromSeverity(finding.severity),
                 },
             };
@@ -120,6 +122,11 @@ export function generateSARIF(findings, meta = {}) {
                 status: finding.status || 'open',
                 timestamp: finding.timestamp || new Date().toISOString(),
                 affectedUrl: finding.affected_surface || meta.target || null,
+                verificationLevel: verification.level,
+                verificationLabel: verification.label,
+                verificationMethod: verification.method,
+                verificationReason: verification.reason,
+                evidenceGaps: verification.missingEvidence,
             },
         };
 
@@ -147,6 +154,14 @@ export function generateSARIF(findings, meta = {}) {
                         },
                     }],
                 }],
+            }];
+        }
+
+        if (Object.keys(verification.proof || {}).length > 1) {
+            result.attachments = [{
+                description: { text: `VIBE SHIELD verification proof (${verification.label})` },
+                artifactLocation: { uri: webUri },
+                properties: { proof: verification.proof },
             }];
         }
 

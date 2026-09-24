@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { sortFindings, filterBySeverity, severitySummary } from '../utils/finding.js';
+import { sortFindings, filterBySeverity, severitySummary, verificationSummary, normalizeVerification } from '../utils/finding.js';
 import { writeSARIF } from './sarif-generator.js';
 import { DiffReporter } from './diff-reporter.js';
 import { getVersion } from '../utils/version.js';
@@ -42,14 +42,15 @@ export class ReportGenerator {
       fs.mkdirSync(reportDir, { recursive: true });
     }
 
+    const withVerification = item => item.verification ? item : { ...item, verification: normalizeVerification(null, item) };
     const filteredFindings = filterBySeverity(
-      sortFindings(findings),
+      sortFindings((findings || []).map(withVerification)),
       this.config.severity_threshold || 'low'
     );
 
     // Use deduplicated findings for human-readable reports
     const reportFindings = deduplicated
-      ? filterBySeverity(sortFindings(deduplicated), this.config.severity_threshold || 'low')
+      ? filterBySeverity(sortFindings(deduplicated.map(withVerification)), this.config.severity_threshold || 'low')
       : filteredFindings;
 
     const summary = severitySummary(filteredFindings);
@@ -79,6 +80,7 @@ export class ReportGenerator {
       },
       summary,
       dedupSummary,
+      verificationSummary: verificationSummary(reportFindings),
       dedupStats: dedupStats || null,
       correlations: correlations || [],
       testSummary: testSummary || {},
@@ -186,6 +188,16 @@ export class ReportGenerator {
     md += `| Low | 🔵 ${summary.low} |\n`;
     md += `| Info | ⚪ ${summary.info} |\n\n`;
 
+    const verification = data.verificationSummary || verificationSummary(findings);
+    md += `### Verification confidence\n\n`;
+    md += `| Level | Findings | Meaning |\n`;
+    md += `|-------|----------|---------|\n`;
+    md += `| Confirmed | ${verification.confirmed} | Exploit executed with observable, replayable proof |\n`;
+    md += `| High confidence | ${verification.high_confidence} | Repeatable controlled response difference |\n`;
+    md += `| Potential | ${verification.potential} | Heuristic evidence requiring review |\n`;
+    md += `| Informational | ${verification.informational} | Surface or configuration observation |\n`;
+    md += `| Not assessed | ${verification.not_assessed} | Access or capability was unavailable |\n\n`;
+
     if (testSummary.total) {
       md += `### Test Execution\n\n`;
       md += `| Metric | Value |\n`;
@@ -218,13 +230,21 @@ export class ReportGenerator {
       md += `### ${icons[sev]} ${sev.toUpperCase()} (${sevFindings.length})\n\n`;
 
       for (const f of sevFindings) {
+        const verification = f.verification || normalizeVerification(null, f);
         md += `#### ${f.id}: ${f.title}\n\n`;
         md += `**Severity:** ${f.severity.toUpperCase()}`;
         if (f.owasp) md += `  |  **OWASP:** ${f.owasp.id} ${f.owasp.name}`;
         md += `  \n`;
         md += `**Affected:** ${f.affected_surface}  \n`;
         md += `**Status:** ${f.status}  \n\n`;
+        md += `**Verification:** ${verification.label} — ${verification.reason}  \n`;
+        md += `**Method:** ${verification.method}  \n\n`;
         md += `${f.description}\n\n`;
+
+        if (Object.keys(verification.proof || {}).length > 1) {
+          md += `**Verification Proof:**\n\n\`\`\`json\n${JSON.stringify(verification.proof, null, 2)}\n\`\`\`\n\n`;
+        }
+        if (verification.missingEvidence?.length) md += `**Evidence gaps:** ${verification.missingEvidence.join(', ')}\n\n`;
 
         if (f.reproduction.length > 0) {
           md += `**Reproduction Steps:**\n`;
@@ -263,6 +283,7 @@ export class ReportGenerator {
       low: '#2979ff',
       info: '#90a4ae',
     };
+    const confidence = data.verificationSummary || verificationSummary(findings);
 
     return `<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -329,6 +350,12 @@ export class ReportGenerator {
     .sev-badge.medium { background: var(--medium); color: #000; }
     .sev-badge.low { background: var(--low); color: #fff; }
     .sev-badge.info { background: var(--info); color: #000; }
+    .verification-badge { display:inline-block; margin-left:.5rem; padding:2px 8px; border:1px solid var(--border); border-radius:999px; font-size:.68rem; font-weight:bold; text-transform:uppercase; }
+    .verification-badge.confirmed { color:#00e676; border-color:#00e676; }
+    .verification-badge.high_confidence { color:#29b6f6; border-color:#29b6f6; }
+    .verification-badge.potential { color:#ffd600; border-color:#ffd600; }
+    .verification-badge.informational, .verification-badge.not_assessed { color:var(--text-dim); }
+    .verification-copy { margin-top:.65rem; padding:.65rem .75rem; border-left:2px solid var(--border); color:var(--text-dim); font-size:.78rem; }
     .finding-desc { font-size: 0.85rem; color: var(--text-dim); margin: 0.5rem 0; white-space: pre-wrap; }
     .finding-details { margin-top: 0.75rem; }
     .finding-details summary { cursor: pointer; font-size: 0.8rem; color: var(--accent); }
@@ -388,6 +415,15 @@ export class ReportGenerator {
     ` : '<div style="width:100%;background:var(--accent)"></div>'}
   </div>
 
+  <h2>Verification Confidence</h2>
+  <div class="summary-grid">
+    <div class="summary-card"><div class="count" style="color:#00e676">${confidence.confirmed}</div><div class="label">Confirmed</div></div>
+    <div class="summary-card"><div class="count" style="color:#29b6f6">${confidence.high_confidence}</div><div class="label">High confidence</div></div>
+    <div class="summary-card"><div class="count" style="color:#ffd600">${confidence.potential}</div><div class="label">Potential</div></div>
+    <div class="summary-card"><div class="count" style="color:var(--info)">${confidence.informational}</div><div class="label">Informational</div></div>
+    <div class="summary-card"><div class="count" style="color:var(--text-dim)">${confidence.not_assessed}</div><div class="label">Not assessed</div></div>
+  </div>
+
   <h2>Coverage</h2>
   <div class="summary-grid">
     <div class="summary-card"><div class="count" style="color:var(--accent)">${surfaceInventory.totalPages}</div><div class="label">Pages</div></div>
@@ -415,14 +451,17 @@ export class ReportGenerator {
   </div>
 
   <div id="findings-container">
-    ${findings.map(f => `
+    ${findings.map(f => {
+      const verification = f.verification || normalizeVerification(null, f);
+      return `
     <div class="finding-card ${f.severity}" data-severity="${f.severity}">
       <div class="finding-header">
         <span class="finding-id">${f.id}</span>
-        <span class="sev-badge ${f.severity}">${f.severity}</span>
+        <span><span class="sev-badge ${f.severity}">${f.severity}</span><span class="verification-badge ${verification.level}">${this._escapeHtml(verification.label)}</span></span>
       </div>
       <div class="finding-title">${this._escapeHtml(f.title)}</div>
       <div class="finding-desc">${this._escapeHtml(f.description)}</div>
+      <div class="verification-copy"><strong>${this._escapeHtml(verification.label)}:</strong> ${this._escapeHtml(verification.reason)}<br><strong>Method:</strong> ${this._escapeHtml(verification.method)}</div>
       <div style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem">
         <strong>Affected:</strong> ${this._escapeHtml(f.affected_surface)}
         ${f.owasp ? `<span style="margin-left:1rem;padding:2px 6px;border-radius:3px;background:#1a1a25;color:#00ff88;font-size:0.7rem;font-weight:bold">${f.owasp.id} ${this._escapeHtml(f.owasp.name)}</span>` : ''}
@@ -433,8 +472,11 @@ export class ReportGenerator {
         <summary>Evidence & Reproduction</summary>
         <pre>${this._escapeHtml(f.reproduction?.join?.('\n') || '')}</pre>
         ${f.evidence ? `<pre>${this._escapeHtml(typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence, null, 2))}</pre>` : ''}
+        ${Object.keys(verification.proof || {}).length > 1 ? `<pre>${this._escapeHtml(JSON.stringify(verification.proof, null, 2))}</pre>` : ''}
+        ${verification.missingEvidence?.length ? `<p style="font-size:.75rem;color:var(--text-dim);margin-top:.5rem"><strong>Evidence gaps:</strong> ${this._escapeHtml(verification.missingEvidence.join(', '))}</p>` : ''}
       </details>
-    </div>`).join('')}
+    </div>`;
+    }).join('')}
   </div>
 
   <footer>VIBE SHIELD 呪 v${meta.version} — Autonomous Security & Quality Intelligence</footer>

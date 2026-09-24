@@ -38,6 +38,13 @@ try {
     const scanner = new XSSScanner(); scanner._candidateParams = ['q'];
     await scanner._testURLParamReflection(context, inventory);
     assert.ok(scanner.findings.some(f => f.severity === 'high' && JSON.parse(f.evidence).executed), 'executable XSS must be detected');
+    const executedXss = scanner.findings.find(f => f.verification?.level === 'confirmed');
+    assert.ok(executedXss, 'browser-executed XSS must be marked confirmed');
+    assert.equal(executedXss.verification.missingEvidence.length, 0);
+    assert.equal(executedXss.verification.proof.baselineResponse.markerValue, null);
+    assert.equal(executedXss.verification.proof.responseDifference.vulnerableMarkerValue, 1);
+    assert.match(executedXss.verification.proof.reproductionCommand, /playwright/);
+    assert.equal(executedXss.verification.proof.trace.steps.at(-1).observedValue, 1);
     const escaped = new XSSScanner(); escaped._candidateParams = ['q'];
     await escaped._testURLParamReflection(context, { pages: [{ url: target + '/escaped', status: 200 }] });
     assert.equal(escaped.findings.length, 0, 'escaped payload must not be XSS');

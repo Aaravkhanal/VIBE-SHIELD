@@ -186,6 +186,20 @@ export class SQLiProber {
                             `3. Error signature: ${errorMatch}`,
                         ],
                         evidence: JSON.stringify({ param, payload: name, errorSignature: errorMatch, responseSnippet: body.substring(0, 300) }),
+                        verification: {
+                            level: 'high_confidence',
+                            reason: `A database-specific error signature appeared after the ${name} mutation.`,
+                            method: 'error-response-differential',
+                            proof: {
+                                originalRequest: { method: 'GET', url: baseUrl },
+                                mutatedRequest: { method: 'GET', url: testUrl.toString(), parameter: param, payload },
+                                baselineResponse: { url: baseUrl },
+                                vulnerableResponse: { status: resp.status, errorSignature: errorMatch, bodySnippet: body.substring(0, 300) },
+                                responseDifference: { databaseErrorIntroduced: errorMatch },
+                                reproductionCommand: `curl -i ${JSON.stringify(testUrl.toString())}`,
+                                accountRole: 'anonymous',
+                            },
+                        },
                         remediation: 'Use parameterized queries (prepared statements) for all database operations. Never concatenate user input into SQL strings. Implement input validation and WAF rules.',
                         references: ['https://owasp.org/www-community/attacks/SQL_Injection', 'CWE-89'],
                     });
@@ -254,6 +268,20 @@ export class SQLiProber {
                         trueStatus: trueResp.status,
                         falseStatus: falseResp.status,
                     }),
+                    verification: {
+                        level: 'high_confidence',
+                        reason: 'Repeated TRUE/FALSE mutations produced the same differential behavior.',
+                        method: 'repeated-boolean-differential',
+                        proof: {
+                            originalRequest: { method: 'GET', url: baseUrl, parameter: param, value: baseValue },
+                            mutatedRequest: { method: 'GET', url: baseUrl, truePayload: pair.truePayload, falsePayload: pair.falsePayload },
+                            baselineResponse: { status: baseline.status, bodyLength: baseline.body.length },
+                            vulnerableResponse: { trueStatus: trueResp.status, falseStatus: falseResp.status, repeated: true },
+                            responseDifference: { simTrueVsBaseline: Number(simTrueBase.toFixed(3)), simTrueVsFalse: Number(simTrueFalse.toFixed(3)), statusDivergence },
+                            reproductionCommand: `curl -i ${JSON.stringify(new URL(baseUrl).toString())} # repeat with ${param} TRUE and FALSE payloads from report`,
+                            accountRole: 'anonymous',
+                        },
+                    },
                     remediation: 'Use parameterized queries (prepared statements). Boolean-based blind SQLi is exploitable even without visible errors — apply strict input validation and least-privilege DB accounts.',
                     references: ['https://owasp.org/www-community/attacks/Blind_SQL_Injection', 'CWE-89'],
                 });
@@ -308,6 +336,20 @@ export class SQLiProber {
                         delayedMs: delayed,
                         thresholdMs: threshold,
                     }),
+                    verification: {
+                        level: 'high_confidence',
+                        reason: 'The delay exceeded the control threshold twice for the same database sleep payload.',
+                        method: 'repeated-timing-differential',
+                        proof: {
+                            originalRequest: { method: 'GET', url: baseUrl, parameter: param, value: baseValue },
+                            mutatedRequest: { method: 'GET', url: baseUrl, parameter: param, payload },
+                            baselineResponse: { controlMs: control },
+                            vulnerableResponse: { firstDelayMs: delayed, confirmationDelayMs: confirm },
+                            responseDifference: { thresholdMs: threshold, observedDeltaMs: delayed - control, repeated: true },
+                            reproductionCommand: `curl -o /dev/null -s -w '%{time_total}\\n' ${JSON.stringify(baseUrl)}`,
+                            accountRole: 'anonymous',
+                        },
+                    },
                     remediation: 'Use parameterized queries (prepared statements). Time-based blind SQLi confirms code execution in the database — enforce input validation, query timeouts, and least-privilege DB accounts.',
                     references: ['https://owasp.org/www-community/attacks/Blind_SQL_Injection', 'CWE-89'],
                 });

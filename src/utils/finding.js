@@ -3,6 +3,64 @@ import { tagFinding } from './owasp-mapper.js';
 import { inferCvssForFinding } from './cvss-calculator.js';
 
 const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'info'];
+export const VERIFICATION_LEVELS = Object.freeze({
+    confirmed: { label: 'Confirmed', rank: 4 },
+    high_confidence: { label: 'High confidence', rank: 3 },
+    potential: { label: 'Potential', rank: 2 },
+    informational: { label: 'Informational', rank: 1 },
+    not_assessed: { label: 'Not assessed', rank: 0 },
+});
+
+const PROOF_FIELDS = [
+    'originalRequest', 'mutatedRequest', 'baselineResponse', 'vulnerableResponse',
+    'responseDifference', 'reproductionCommand', 'timestamp', 'accountRole',
+];
+
+function redactProof(value) {
+    if (value == null) return null;
+    if (Array.isArray(value)) return value.map(redactProof);
+    if (typeof value === 'object') {
+        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
+            /authorization|cookie|password|secret|token|api[-_]?key/i.test(key) ? '[REDACTED]' : redactProof(item)
+        ]));
+    }
+    if (typeof value !== 'string') return value;
+    return value
+        .replace(/(authorization\s*[:=]\s*bearer\s+)[^\s"']+/ig, '$1[REDACTED]')
+        .replace(/((?:password|secret|token|api[-_]?key)\s*[:=]\s*)[^\s&"']+/ig, '$1[REDACTED]')
+        .slice(0, 20000);
+}
+
+export function normalizeVerification(verification, { severity = 'info', evidence = null, timestamp = new Date().toISOString() } = {}) {
+    const supplied = typeof verification === 'string' ? { level: verification } : { ...(verification || {}) };
+    let level = supplied.level || (severity === 'info' ? 'informational' : 'potential');
+    if (!VERIFICATION_LEVELS[level]) level = 'potential';
+
+    const proof = redactProof({ ...(supplied.proof || {}), timestamp: supplied.proof?.timestamp || timestamp });
+    const missingEvidence = PROOF_FIELDS.filter(field => !proof[field]);
+    if (!proof.screenshot && !proof.trace) missingEvidence.push('screenshotOrTrace');
+
+    // A confirmed label is reserved for findings with a complete, replayable
+    // proof bundle. Incomplete claims are downgraded instead of overstated.
+    const requestedLevel = level;
+    if (level === 'confirmed' && missingEvidence.length > 0) level = evidence ? 'high_confidence' : 'potential';
+
+    return {
+        level,
+        label: VERIFICATION_LEVELS[level].label,
+        reason: supplied.reason || ({
+            confirmed: 'The scanner executed the exploit and recorded observable impact.',
+            high_confidence: 'Controlled requests produced a repeatable security-relevant response change.',
+            potential: 'Heuristic evidence requires manual verification.',
+            informational: 'Attack-surface discovery or configuration observation.',
+            not_assessed: 'The scanner could not assess this condition with the available access or capability.',
+        })[level],
+        method: supplied.method || (level === 'informational' ? 'observation' : level === 'potential' ? 'heuristic' : 'active-verification'),
+        requestedLevel: requestedLevel !== level ? requestedLevel : undefined,
+        proof,
+        missingEvidence,
+    };
+}
 
 /**
  * Creates a VIBE SHIELD Finding object matching the manifest schema.
@@ -21,10 +79,12 @@ export function createFinding({
     status = 'open',
     source = null,
     cvss = null,
+    verification = null,
 }) {
     const prefix = module.toUpperCase();
     const shortId = randomId(6);
 
+    const timestamp = new Date().toISOString();
     const baseFinding = {
         id: `VIBE SHIELD-${prefix}-${shortId}`,
         module,
@@ -37,7 +97,8 @@ export function createFinding({
         remediation,
         references,
         status,
-        timestamp: new Date().toISOString(),
+        timestamp,
+        verification: normalizeVerification(verification, { severity, evidence, timestamp }),
         // Provenance: 'llm' marks AI-generated/augmented findings; null = deterministic.
         ...(source ? { source } : {}),
     };
@@ -77,4 +138,14 @@ export function severitySummary(findings) {
     return summary;
 }
 
-export default { createFinding, sortFindings, filterBySeverity, severitySummary };
+export function verificationSummary(findings = []) {
+    const summary = Object.fromEntries(Object.keys(VERIFICATION_LEVELS).map(level => [level, 0]));
+    summary.total = findings.length;
+    for (const finding of findings) {
+        const level = finding.verification?.level || (finding.severity === 'info' ? 'informational' : 'potential');
+        summary[VERIFICATION_LEVELS[level] ? level : 'potential']++;
+    }
+    return summary;
+}
+
+export default { createFinding, sortFindings, filterBySeverity, severitySummary, verificationSummary, normalizeVerification };
