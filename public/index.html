@@ -6,29 +6,40 @@
   <title>VIBE SHIELD — Autonomous Security Intelligence</title>
   <meta name="description" content="Enter any URL and VIBE SHIELD autonomously audits it like a cybersecurity expert — finding vulnerabilities, rating performance, and telling you exactly what to fix.">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/workspace.css">
 </head>
 <body>
-<div class="app-shell">
+<a class="skip-link" href="#workspace-main">Skip to workspace</a>
+<section class="auth-gate hidden" id="auth-gate" aria-labelledby="auth-heading">
+  <div class="auth-story">
+    <a class="auth-brand" href="/">VIBE<span>SHIELD</span><i></i></a>
+    <div class="auth-copy"><span class="eyebrow">BUILD WITH CONFIDENCE</span><h1 id="auth-heading">Your next release.<br><em>A little more certain.</em></h1><p>See what your application exposes. Understand what matters. Go from a finding to your next fix.</p>
+      <button class="google-button" id="google-sign-in"><svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.9-1.75 2.98-4.33 2.98-7.36Z"/><path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.41l-3.24-2.51c-.9.6-2.05.96-3.38.96-2.6 0-4.8-1.76-5.59-4.12H3.07v2.59A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.41 13.92a6 6 0 0 1 0-3.84V7.49H3.07a10 10 0 0 0 0 9.02l3.34-2.59Z"/><path fill="#EA4335" d="M12 5.96c1.47 0 2.79.5 3.82 1.49l2.87-2.87A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.93 5.49l3.34 2.59A5.99 5.99 0 0 1 12 5.96Z"/></svg>Continue with Google</button>
+      <p class="auth-note">Your scans stay in your workspace.<br>We request your name and email, never your inbox.</p>
+      <p id="auth-message" role="status"></p>
+    </div><span class="auth-footer">Independent evidence. Informed decisions.</span>
+  </div>
+  <div class="auth-art" aria-hidden="true"><div class="art-grid"></div><span class="art-coordinate">VS / FIELD NOTES 001</span><div class="shield-sculpture"><div class="shield-layer layer-back"></div><div class="shield-layer layer-front"><span>V<span class="shield-slash">/</span>S</span></div></div><div class="art-caption"><span class="art-dot"></span> A clearer view of your attack surface.</div></div>
+</section>
+<div class="app-shell" id="workspace-shell" hidden>
 
   <!-- ═══ HEADER ══════════════════════════════════════════════ -->
   <header class="site-header">
     <div class="site-header-inner">
-      <a class="brand" href="/">
-        <span class="brand-name">VIBE SHIELD</span>
-        <span class="brand-dot"></span>
-      </a>
-
-      <nav class="site-nav">
-        <button type="button" id="nav-history-btn">Scan History</button>
-        <span class="nav-divider"></span>
-        <button type="button" id="nav-cicd-btn">CI/CD</button>
-        <button type="button" id="nav-waf-btn">WAF Rules</button>
-        <button type="button" id="nav-threat-btn">Threat Matrix</button>
-        <button type="button" id="nav-report-btn">PDF Report</button>
-        <span class="nav-divider"></span>
-        <button type="button" id="nav-settings-btn">Settings</button>
+      <a class="brand" href="/" aria-label="Vibe Shield home"><span class="brand-symbol">v<span>/</span>s</span><span class="brand-wordmark">VIBE SHIELD<small>SECURITY WORKSPACE</small></span></a>
+      <button class="rail-new" id="new-audit-btn" type="button"><span>＋</span> New audit <kbd>N</kbd></button>
+      <span class="nav-caption">WORKSPACE</span>
+      <nav class="site-nav" aria-label="Workspace">
+        <button type="button" id="nav-overview-btn" class="active"><span class="nav-icon">◫</span>Overview</button>
+        <button type="button" id="nav-history-btn"><span class="nav-icon">◷</span>Scan history</button>
+        <button type="button" id="nav-report-btn"><span class="nav-icon">▤</span>Reports</button>
+        <span class="nav-caption">TOOLS</span>
+        <button type="button" id="nav-cicd-btn"><span class="nav-icon">⌘</span>Integrations</button>
+        <button type="button" id="nav-waf-btn"><span class="nav-icon">◇</span>Hardening rules</button>
+        <button type="button" id="nav-threat-btn"><span class="nav-icon">◎</span>Threat library</button>
+        <button type="button" id="nav-settings-btn" data-admin-only><span class="nav-icon">⚙</span>Settings</button>
       </nav>
-
+      <div class="rail-bottom"><button id="command-open" type="button" class="command-trigger">Jump to… <kbd>⌘ K</kbd></button><div class="account-row"><span class="account-avatar" id="account-avatar">L</span><div><strong id="account-name">Local workspace</strong><span id="account-email">On this device</span></div><button type="button" id="account-button" aria-label="Account options">↗</button></div></div>
       <div class="server-status">
         <span class="status-dot" id="server-status-dot"></span>
         <span id="server-status-text">Ready</span>
@@ -37,22 +48,22 @@
   </header>
 
   <!-- ═══ MAIN ════════════════════════════════════════════════ -->
-  <main class="site-main">
+  <main class="site-main" id="workspace-main">
+    <div class="workspace-topline"><div><span class="workspace-breadcrumb">Workspace</span><span class="breadcrumb-slash">/</span><strong id="workspace-location">Overview</strong></div><div class="topline-right"><span class="workspace-date" id="workspace-date"></span><button type="button" id="mobile-nav-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button></div></div>
 
     <!-- HERO SEARCH -->
     <section class="hero-section" id="hero-section">
-      <h1 class="hero-title">Security audit any website</h1>
-      <p class="hero-sub">Enter a URL and VIBE SHIELD navigates to it in the background, runs a full expert-grade security check, and gives you every finding with fix instructions.</p>
+      <div class="hero-heading"><div><span class="eyebrow"><span class="inline-dot"></span> YOUR NEXT RELEASE STARTS HERE</span><h1 class="hero-title">Build fast.<br><em>Know what you ship.</em></h1><p class="hero-sub">A closer look at your application’s security.<br>Real evidence, clear priorities, a practical next step.</p></div><div class="hero-index" aria-hidden="true">01<span>DISCOVER<br>VERIFY<br>IMPROVE</span></div></div>
 
       <form id="scan-form" class="search-bar-wrap" autocomplete="off">
         <div class="search-bar">
-          <span class="search-bar-icon">⌕</span>
-          <input type="text" id="target-url" placeholder="https://example.com or paste any URL..." required>
-          <button type="submit" id="start-scan-btn" class="search-scan-btn">Scan →</button>
+          <span class="search-bar-icon" aria-hidden="true">↗</span>
+          <input type="text" id="target-url" placeholder="Enter your application URL" aria-label="Application URL" required>
+          <button type="submit" id="start-scan-btn" class="search-scan-btn">Start audit <span aria-hidden="true">↗</span></button>
         </div>
 
         <button type="button" id="scan-config-toggle-btn" class="scan-config-toggle">
-          Configure scan options <span class="config-chevron" id="config-chevron">▾</span>
+          <span id="scan-scope-summary">5 modules · Standard · Safe-active</span><span class="configure-label">Customize</span> <span class="config-chevron" id="config-chevron">▾</span>
         </button>
 
         <div class="scan-config-panel" id="scan-config-panel">
@@ -78,7 +89,7 @@
               </select>
             </div>
             <div class="config-field">
-              <label>Crawl Depth</label>
+              <label>Page limit</label>
               <select id="max-pages" class="config-select">
                 <option value="10">Quick — up to 10 pages</option>
                 <option value="25" selected>Standard — up to 25 pages</option>
@@ -121,6 +132,14 @@
       </form>
     </section>
 
+    <section class="workspace-guide" id="workspace-guide" aria-label="How an audit works">
+      <div class="guide-heading"><span class="eyebrow">FROM SURFACE TO SIGNAL</span><h2>Less guesswork.<br>More context.</h2><p>An audit follows the application you actually built—then brings the evidence back to you.</p></div>
+      <div class="guide-steps">
+        <details open><summary><span>01</span>Map the surface<i>↗</i></summary><p>Discover reachable pages, forms, and endpoints. Add target credentials when you need to inspect protected areas.</p></details>
+        <details><summary><span>02</span>Look for the weak points<i>↗</i></summary><p>Choose security, quality, AI, API, and logic checks. Live module updates show what is being tested and what could not be assessed.</p></details>
+        <details><summary><span>03</span>Leave with a next step<i>↗</i></summary><p>Inspect evidence, prioritize findings, and share a report. A clean result describes the tested scope, not a guarantee of security.</p></details>
+      </div>
+    </section>
     <!-- PROGRESS SECTION -->
     <section id="scan-progress-section" class="progress-section hidden">
       <div class="progress-header">
@@ -421,7 +440,7 @@
           </div>
 
           <!-- AI Threat Matrix -->
-          <div class="ai-matrix-section">
+          <div class="ai-matrix-section" id="ai-matrix-section">
             <div class="section-head">
               <div class="section-title">OWASP Top 10 for LLMs — Threat Matrix</div>
               <button type="button" id="run-matrix-sim-btn" class="btn btn-primary">Run Threat Simulation</button>
@@ -827,11 +846,13 @@
   </div>
 </div>
 
+<dialog id="command-dialog" class="command-dialog"><div class="command-head"><input id="command-input" placeholder="Where would you like to go?" aria-label="Find a workspace action"><button type="button" data-close-dialog aria-label="Close command menu">Esc</button></div><div id="command-results"></div><p class="command-hint">↑ ↓ to navigate · Enter to open</p></dialog>
+<dialog id="account-dialog" class="account-dialog"><button type="button" class="dialog-close" data-close-dialog aria-label="Close account">×</button><span class="eyebrow">YOUR WORKSPACE</span><h2 id="account-dialog-title">Make it yours.</h2><p id="account-dialog-copy">Connect a Google account to keep your scans in a private workspace.</p><button type="button" id="account-primary" class="btn btn-primary">Continue with Google</button><p id="account-dialog-note" class="auth-note"></p></dialog>
 <!-- Toast container -->
 <div id="toast-container"></div>
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
 <script src="/app.js" type="module"></script>
+<script src="/workspace.js" type="module"></script>
 </body>
 </html>

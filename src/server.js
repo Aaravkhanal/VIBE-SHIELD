@@ -1,4 +1,5 @@
 import http from 'http';
+import { createGoogleAuth } from './server-auth.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -15,10 +16,12 @@ import { OWASP_LLM_TAXONOMY, evaluateAiThreatMatrix } from './utils/ai-threat-ma
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
+if (fs.existsSync(path.join(ROOT_DIR, '.env'))) process.loadEnvFile?.(path.join(ROOT_DIR, '.env'));
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 const REPORTS_DIR = process.env.VIBE_SHIELD_REPORTS_DIR ? path.resolve(process.env.VIBE_SHIELD_REPORTS_DIR) : path.join(ROOT_DIR, 'vibe-shield-reports');
 
 const PORT = process.env.PORT || 3000;
+const googleAuth = createGoogleAuth();
 
 // ─── API Key Management ───────────────────────────────────────────────────
 const DATA_DIR = path.join(ROOT_DIR, 'data');
@@ -75,6 +78,24 @@ function saveSettings(newSettings) {
 const activeScans = new Map();
 const scanHistory = [];
 const scanSseClients = new Map(); // scanId -> Set of SSE response streams
+
+function scanOwner(req) {
+    return googleAuth.required ? googleAuth.getSession(req)?.user.id || '__automation__' : 'local';
+}
+function canAccessScan(req, scanId) {
+    if (!googleAuth.required) return true;
+    if (!/^[\w-]+$/.test(scanId)) return false;
+    try {
+        const owner = JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, scanId, 'owner.json'), 'utf8')).id;
+        const user = googleAuth.getSession(req)?.user;
+        return Boolean(user && (owner === user.id || (owner === '__automation__' && user.isAdmin)));
+    } catch { return false; }
+}
+function registerScanOwner(req, scanId) {
+    const directory = path.join(REPORTS_DIR, scanId);
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'owner.json'), JSON.stringify({ id: scanOwner(req) }), { mode: 0o600 });
+}
 
 function broadcastScanProgress(scanId, data) {
     const clients = scanSseClients.get(scanId);
@@ -160,17 +181,20 @@ function getContentType(filePath) {
     }
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
     const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
     const pathname = parsedUrl.pathname;
 
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    if (pathname.startsWith('/api/') || pathname.startsWith('/auth/')) res.setHeader('Cache-Control', 'no-store');
     // CORS headers
-    if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) {
+    if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}` && req.headers.origin !== googleAuth.origin) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Cross-origin access to this local scanner is not allowed.' }));
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key');
 
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
@@ -178,10 +202,28 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    if (await googleAuth.handle(req, res, pathname, parsedUrl.searchParams)) return;
+    if ((pathname.startsWith('/api/') || pathname.startsWith('/vibe-shield-reports/')) && !googleAuth.authorize(req, res, VIBE_API_KEY)) return;
+
+    if (googleAuth.required) {
+        const adminRoutes = ['/api/settings', '/api/key', '/api/key/regenerate', '/api/cicd/workflow-template'];
+        if (adminRoutes.includes(pathname) && !googleAuth.getSession(req)?.user.isAdmin) {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'Administrator access is required.' }));
+        }
+        let ownedScanId = pathname.startsWith('/api/scan/') ? pathname.split('/')[3] : pathname.startsWith('/vibe-shield-reports/') ? pathname.split('/')[2] : null;
+        if (pathname.startsWith('/api/badge')) ownedScanId = parsedUrl.searchParams.get('scanId') || pathname.split('/')[3];
+        if (ownedScanId && !canAccessScan(req, ownedScanId)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'Scan not found.' }));
+        }
+    }
+
     // Serve static frontend assets
     if (pathname === '/' || pathname === '/index.html') {
         return serveStaticFile(res, path.join(PUBLIC_DIR, 'index.html'), 'text/html');
     }
+    if (['/workspace.css', '/workspace.js'].includes(pathname)) return serveStaticFile(res, path.join(PUBLIC_DIR, pathname.slice(1)), getContentType(pathname));
     if (pathname === '/styles.css') {
         return serveStaticFile(res, path.join(PUBLIC_DIR, 'styles.css'), 'text/css');
     }
@@ -193,6 +235,10 @@ const server = http.createServer((req, res) => {
     // Serve generated scan HTML/JSON report files dynamically
     if (pathname.startsWith('/vibe-shield-reports/')) {
         const relativeReportPath = pathname.replace('/vibe-shield-reports/', '');
+        if (relativeReportPath.split('/').at(-1) === 'owner.json') {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            return res.end('404 Not Found');
+        }
         const fullReportPath = path.join(REPORTS_DIR, relativeReportPath);
         if (fs.existsSync(fullReportPath) && fullReportPath.startsWith(REPORTS_DIR + path.sep) && fs.statSync(fullReportPath).isFile()) {
             return serveStaticFile(res, fullReportPath, getContentType(fullReportPath));
@@ -215,6 +261,14 @@ const server = http.createServer((req, res) => {
                     console.error('On-the-fly report generation error:', e);
                 }
             }
+        }
+    }
+
+    if (['/api/scan', '/api/webhook/scan'].includes(pathname) && req.method === 'POST') {
+        const running = [...activeScans.values()].filter(scan => !scan.completed);
+        if (running.length >= 4 || running.filter(scan => scan.ownerId === scanOwner(req)).length >= 2) {
+            res.writeHead(429, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'Your workspace already has scans running. Wait for a scan to finish.' }));
         }
     }
 
@@ -276,6 +330,8 @@ const server = http.createServer((req, res) => {
                     });
                 }
 
+                scanData.ownerId = scanOwner(req);
+                registerScanOwner(req, scanId);
                 activeScans.set(scanId, scanData);
 
                 // Build CLI arguments
@@ -480,13 +536,13 @@ const server = http.createServer((req, res) => {
     // API: Get Scan History
     if (pathname === '/api/scans/history' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify(scanHistory.slice(0, 20)));
+        return res.end(JSON.stringify(scanHistory.filter(scan => canAccessScan(req, scan.scanId)).slice(0, 20)));
     }
 
     // API: Get Historical Score Trends
     if (pathname === '/api/scans/trends' && req.method === 'GET') {
         const targetFilter = parsedUrl.searchParams.get('url');
-        let list = [...scanHistory];
+        let list = scanHistory.filter(scan => canAccessScan(req, scan.scanId));
         if (targetFilter) {
             list = list.filter(s => s.url === targetFilter || s.url.includes(targetFilter));
         }
@@ -559,6 +615,7 @@ const server = http.createServer((req, res) => {
                 let report = payload.report;
                 
                 if (!report && payload.scanId) {
+                    if (!canAccessScan(req, payload.scanId)) throw new Error('Scan not found.');
                     const scanData = activeScans.get(payload.scanId);
                     if (scanData && scanData.report) {
                         report = scanData.report;
@@ -604,6 +661,7 @@ const server = http.createServer((req, res) => {
                 const payload = JSON.parse(body || '{}');
                 let report = payload.report;
                 if (!report && payload.scanId) {
+                    if (!canAccessScan(req, payload.scanId)) throw new Error('Scan not found.');
                     const scanData = activeScans.get(payload.scanId);
                     if (scanData && scanData.report) {
                         report = scanData.report;
@@ -734,6 +792,8 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
                     reportHtmlUrl: null
                 };
 
+                scanData.ownerId = scanOwner(req);
+                registerScanOwner(req, scanId);
                 activeScans.set(scanId, scanData);
 
                 const args = [
@@ -939,8 +999,9 @@ export const ${category.id.toLowerCase()}_shield = createGuardrail({
 
     // API: CI/CD Workflow Generator Template
     if (pathname === '/api/cicd/workflow-template' && req.method === 'GET') {
-        const hostUrl = req.headers.host || 'localhost:3000';
-        const serverUrl = `http://${hostUrl}`;
+        const serverUrl = googleAuth.required
+            ? googleAuth.origin
+            : `${req.socket.encrypted ? 'https' : 'http'}://${req.headers.host || `localhost:${PORT}`}`;
 
         const githubActionYaml = `name: 🛡️ VIBE SHIELD Continuous Security Scan
 
@@ -968,6 +1029,7 @@ jobs:
           # Trigger webhook and evaluate security gate
           RESPONSE=$(curl -s -X POST "${serverUrl}/api/webhook/scan" \\
             -H "Content-Type: application/json" \\
+            -H "x-api-key: \${{ secrets.VIBESHIELD_API_KEY }}" \\
             -d '{
               "targetUrl": "\${{ secrets.APP_TARGET_URL || '\''https://staging.your-app.com'\'' }}",
               "modules": ["qa", "security", "ai", "logic", "api"],
@@ -1004,6 +1066,7 @@ jobs:
 
         const curlCommand = `curl -X POST "${serverUrl}/api/webhook/scan" \\
   -H "Content-Type: application/json" \\
+  -H "x-api-key: YOUR_VIBESHIELD_API_KEY" \\
   -d '{
     "targetUrl": "https://your-app.com",
     "modules": ["qa", "security", "ai", "logic", "api"],
@@ -1026,6 +1089,7 @@ jobs:
     - |
       RESPONSE=$(curl -s -X POST "${serverUrl}/api/webhook/scan" \\
         -H "Content-Type: application/json" \\
+        -H "x-api-key: $VIBESHIELD_API_KEY" \\
         -d '{"targetUrl":"'\${CI_ENVIRONMENT_URL}'", "securityGate":{"minScore":80, "maxCritical":0}}')
       echo "$RESPONSE"
   only:
@@ -1101,7 +1165,7 @@ jobs:
                 const openaiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY;
 
                 if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('Enter a question.');
-                const scanContext = report || (scanId ? activeScans.get(scanId)?.report : null);
+                const scanContext = report || (scanId && canAccessScan(req, scanId) ? activeScans.get(scanId)?.report : null);
                 if (!scanContext) {
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     return res.end(JSON.stringify({ response: 'Run or select a scan first. No scan evidence is available for this question.', provider: 'local' }));
@@ -1329,18 +1393,28 @@ function parseScanLogs(scanData, text) {
 }
 
 function startServer(portToUse) {
-    server.listen(portToUse, process.env.HOST || '127.0.0.1')
-        .on('listening', () => {
-            console.log(`\n🛡️  VIBE SHIELD Web Application running at http://localhost:${portToUse}\n`);
-        })
-        .on('error', (err) => {
-            if (err.code === 'EADDRINUSE') {
-                console.log(`Port ${portToUse} is in use, trying port ${portToUse + 1}...`);
-                startServer(portToUse + 1);
-            } else {
-                console.error('Server error:', err);
+    const onListening = () => {
+        server.off('error', onError);
+        console.log(`\n🛡️  VIBE SHIELD Web Application running at http://localhost:${portToUse}\n`);
+    };
+    const onError = err => {
+        server.off('listening', onListening);
+        if (err.code === 'EADDRINUSE') {
+            if (googleAuth.required) {
+                console.error(`Port ${portToUse} is already in use. APP_URL must match the listening port when Google sign-in is enabled.`);
+                process.exitCode = 1;
+                return;
             }
-        });
+            console.log(`Port ${portToUse} is in use, trying port ${portToUse + 1}...`);
+            startServer(portToUse + 1);
+        } else {
+            console.error('Server error:', err);
+            process.exitCode = 1;
+        }
+    };
+    server.once('listening', onListening);
+    server.once('error', onError);
+    server.listen(portToUse, process.env.HOST || '127.0.0.1');
 }
 
 startServer(Number(PORT));

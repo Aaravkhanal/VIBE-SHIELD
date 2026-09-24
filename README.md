@@ -819,12 +819,34 @@ Set `halt_on_critical: true` in config to fail the build on critical findings.
 
 ## Dashboard
 
-Every VIBE SHIELD scan generates a self-contained **HTML report** at `vibe-shield-reports/<timestamp>/report.html`. Open it in any browser for a visual dashboard with:
+Start the interactive workspace with:
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000` to run scans, follow live agent progress, inspect score trends, filter findings, and open generated reports. Every scan also generates a self-contained **HTML report** at `vibe-shield-reports/<scan-id>/report.html` with:
 
 - Severity breakdown charts
 - Filterable findings table
 - Attack chain correlation view
 - Evidence and reproduction steps
+
+### Google sign-in
+
+The workspace supports Google OpenID Connect for any verified Google account. It requests only `openid`, `email`, and `profile`; it does not request Gmail or inbox access.
+
+1. Copy `.env.example` to `.env`.
+2. In Google Cloud, create an OAuth 2.0 client with application type **Web application**.
+3. Add `${APP_URL}/auth/google/callback` as an authorized redirect URI. For local development, use `http://localhost:3000/auth/google/callback`.
+4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `APP_URL`, then restart the server.
+5. Set `AUTH_ADMIN_EMAILS` to the comma-separated accounts that may edit settings, rotate the CI API key, and generate integration workflows.
+
+Leaving `AUTH_ALLOWED_EMAILS` empty allows anyone with a verified Google account, while keeping each account's scan history and reports private. Set it to a comma-separated list only when you want an allowlist. Existing reports created before authentication was enabled are not assigned to a user and remain hidden while sign-in is required.
+
+Sessions are held in server memory and last up to eight hours. Restarting the server signs everyone out. Production deployments must use an HTTPS `APP_URL`; local HTTP is accepted only for localhost development.
+
+CI scanners continue to use the workspace API key on `POST /api/webhook/scan` through the `x-api-key` header. Other API and report routes require a signed-in browser session when authentication is enabled.
 
 ---
 
