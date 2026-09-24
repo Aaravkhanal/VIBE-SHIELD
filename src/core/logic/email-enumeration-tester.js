@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { DifferentialEngine } from '../differential-engine.js';
 
 /**
  * EmailEnumerationTester — Tests if login/register/reset forms reveal
@@ -13,6 +14,7 @@ import { createFinding } from '../../utils/finding.js';
 export class EmailEnumerationTester {
     constructor(logger) {
         this.logger = logger;
+        this.differential = new DifferentialEngine({ logger, timeoutMs: 15000 });
     }
 
     async test(businessContext, surfaceInventory) {
@@ -43,19 +45,30 @@ export class EmailEnumerationTester {
             );
 
             if (emailField) {
-                // Test with two different non-existent emails
-                const testEmail1 = `vibe_shield_test_${Date.now()}@nonexistent-domain-test.com`;
-                const testEmail2 = `vibe_shield_test_${Date.now() + 1}@nonexistent-domain-test.com`;
+                // Use three distinct, non-existent addresses so the differential
+                // engine can separate response behavior from the reflected value.
+                const stamp = Date.now();
+                const testEmail1 = `vibe_shield_test_${stamp}_a@nonexistent-domain-test.com`;
+                const testEmail2 = `vibe_shield_test_${stamp}_b@nonexistent-domain-test.com`;
+                const testEmail3 = `vibe_shield_test_${stamp}_c@nonexistent-domain-test.com`;
 
                 try {
-                    const [response1, response2] = await Promise.all([
-                        this._submitForm(form, { [emailField.name]: testEmail1, password: 'WrongPass123!' }),
-                        this._submitForm(form, { [emailField.name]: testEmail2, password: 'WrongPass123!' }),
-                    ]);
+                    const differential = await this.differential.run({
+                        baseline: { email: testEmail1, password: 'WrongPass123!' },
+                        control: { email: testEmail2, password: 'WrongPass123!' },
+                        payload: { email: testEmail3, password: 'WrongPass123!' },
+                        execute: async request => this._submitForm(form, { [emailField.name]: request.email, password: request.password }),
+                        transform: snapshot => ({
+                            ...snapshot,
+                            body: snapshot.body.replace(/vibe_shield_test_[^\s<>&"']+@nonexistent-domain-test\.com/gi, '<controlled-email>'),
+                        }),
+                    });
+                    const response1 = differential.aggregates.baseline.representative;
+                    const response2 = differential.aggregates.payload.representative;
 
-                    if (response1 && response2) {
+                    if (differential.confirmed && response1 && response2) {
                         // Check for different error messages (enumeration indicator)
-                        if (response1.body !== response2.body) {
+                        if (differential.uniqueDifferential && response1.body !== response2.body) {
                             const diff = this._findDifference(response1.body, response2.body);
                             if (diff) {
                                 findings.push(createFinding({
@@ -71,6 +84,21 @@ export class EmailEnumerationTester {
                                         form_id: form.id,
                                         email_field: emailField.name,
                                         difference: diff,
+                                        differential: differential.evidence,
+                                    },
+                                    verification: {
+                                        level: 'high_confidence',
+                                        reason: 'Repeated form requests produced a stable, payload-specific response difference after email values were controlled.',
+                                        method: 'repeated-form-response-differential',
+                                        proof: {
+                                            originalRequest: { method: form.method || 'POST', url: form.action || form.page, email: testEmail1 },
+                                            mutatedRequest: { method: form.method || 'POST', url: form.action || form.page, email: testEmail3 },
+                                            baselineResponse: differential.evidence.baseline,
+                                            vulnerableResponse: differential.evidence.payload,
+                                            responseDifference: differential.evidence.comparisons,
+                                            reproductionCommand: `curl -i -X ${form.method || 'POST'} ${JSON.stringify(form.action || form.page)} -d ${JSON.stringify(`${emailField.name}=${testEmail3}&password=WrongPass123!`)}`,
+                                            accountRole: 'anonymous',
+                                        },
                                     },
                                     remediation:
                                         'Return a generic error message regardless of whether the email exists: ' +
@@ -80,8 +108,8 @@ export class EmailEnumerationTester {
                         }
 
                         // Check timing difference (>500ms indicates database lookup variation)
-                        const timeDiff = Math.abs(response1.time - response2.time);
-                        if (timeDiff > 500) {
+                        if (differential.timing.payloadSpecific) {
+                            const timeDiff = Math.abs((response2.durationMs || 0) - (response1.durationMs || 0));
                             findings.push(createFinding({
                                 module: 'logic',
                                 title: 'Login Form Timing Side-Channel (Potential Enumeration)',
@@ -90,12 +118,27 @@ export class EmailEnumerationTester {
                                 description:
                                     `Login form shows ${timeDiff}ms timing difference between requests. ` +
                                     `This could allow email enumeration via timing analysis.`,
-                                evidence: {
-                                    time_diff_ms: timeDiff,
-                                    response1_time: response1.time,
-                                    response2_time: response2.time,
-                                },
-                                remediation:
+                                    evidence: {
+                                        time_diff_ms: timeDiff,
+                                        response1_time: response1.durationMs,
+                                        response2_time: response2.durationMs,
+                                        differential: differential.evidence,
+                                    },
+                                    verification: {
+                                        level: 'high_confidence',
+                                        reason: 'The payload email produced a timing delta above repeated baseline/control noise.',
+                                        method: 'repeated-timing-differential',
+                                        proof: {
+                                            originalRequest: { method: form.method || 'POST', url: form.action || form.page, email: testEmail1 },
+                                            mutatedRequest: { method: form.method || 'POST', url: form.action || form.page, email: testEmail3 },
+                                            baselineResponse: differential.evidence.baseline,
+                                            vulnerableResponse: differential.evidence.payload,
+                                            responseDifference: differential.evidence.timing,
+                                            reproductionCommand: `curl -i -X ${form.method || 'POST'} ${JSON.stringify(form.action || form.page)}`,
+                                            accountRole: 'anonymous',
+                                        },
+                                    },
+                                    remediation:
                                     'Normalize response times by adding constant-time comparison or artificial delay. ' +
                                     'Always perform password hashing even for non-existent accounts.',
                             }));

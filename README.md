@@ -699,6 +699,12 @@ node src/cli.js ai https://myapp.dev/api/chat --max-pages 1 -v
 
 ## Reports
 
+### Baseline and differential verification
+
+Active probes use a repeatable three-variant request model: a normal baseline, a harmless control mutation, and the security payload. Each variant is repeated to measure network noise, then compared across status, response structure and body, redirects, cookies, timing, and browser DOM state. A finding is marked **confirmed** only when the payload produces a stable, payload-specific signal that is absent from both controls; otherwise the report keeps it at a lower verification level or marks it not assessed.
+
+This engine powers SQL injection, XSS, authorization boundary checks, open redirects, SSRF, pricing manipulation, and email enumeration. Evidence stores the three request variants, representative responses, repeat stability, differential scores, and timing analysis so a reviewer can reproduce the result. Destructive business-logic mutations remain gated behind `--aggressive`.
+
 Every scan generates the following report formats, saved to `vibe-shield-reports/<timestamp>/`:
 
 | Format | File | Description |

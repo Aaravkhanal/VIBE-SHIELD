@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { DifferentialEngine } from '../differential-engine.js';
 
 /**
  * AccessBoundaryTester — Tests access control boundaries.
@@ -13,6 +14,7 @@ import { createFinding } from '../../utils/finding.js';
 export class AccessBoundaryTester {
     constructor(logger) {
         this.logger = logger;
+        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000 });
 
         // Common ID parameter names
         this.ID_PARAMS = ['id', 'user_id', 'userId', 'uid', 'account_id', 'accountId',
@@ -73,19 +75,12 @@ export class AccessBoundaryTester {
         for (const path of this.ADMIN_PATHS) {
             try {
                 const url = new URL(path, baseUrl).href;
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 5000);
-
-                const response = await fetch(url, {
-                    method: 'GET',
-                    redirect: 'manual',
-                    signal: controller.signal,
-                });
-                clearTimeout(timeout);
+                const differential = await this._urlDifferential(baseUrl, url, snapshot => this._isAdminContent(snapshot.body));
+                const response = differential.aggregates.payload.representative;
 
                 // If admin page is accessible (200) without auth, that's a finding
-                if (response.status === 200) {
-                    const text = await response.text();
+                if (differential.confirmed && response?.status === 200) {
+                    const text = response.body || '';
                     // Verify it's actually admin content, not a generic 200
                     if (this._isAdminContent(text)) {
                         findings.push(createFinding({
@@ -98,7 +93,21 @@ export class AccessBoundaryTester {
                                 `1. Open ${url} in a private/incognito browser`,
                                 `2. Admin page loads without login requirement`,
                             ],
-                            evidence: `URL: ${url}\nStatus: ${response.status}\nContent indicators: admin content detected`,
+                            evidence: { url, status: response.status, differential: differential.evidence },
+                            verification: {
+                                level: 'high_confidence',
+                                reason: 'Repeated unauthenticated requests returned stable admin-specific content that was unique to the candidate endpoint.',
+                                method: 'authorization-boundary-differential',
+                                proof: {
+                                    originalRequest: { method: 'GET', url },
+                                    mutatedRequest: { method: 'GET', url },
+                                    baselineResponse: differential.evidence.baseline,
+                                    vulnerableResponse: differential.evidence.payload,
+                                    responseDifference: differential.evidence.comparisons,
+                                    reproductionCommand: `curl -i ${JSON.stringify(url)}`,
+                                    accountRole: 'anonymous',
+                                },
+                            },
                             remediation: 'Implement authentication and authorization checks on all admin endpoints. Use middleware to verify user role before granting access. Return 401/403 for unauthorized requests.',
                         }));
                     }
@@ -138,17 +147,11 @@ export class AccessBoundaryTester {
 
                 const tamperedUrl = url.replace(`/${originalId}`, `/${testId}`);
                 try {
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 5000);
+                    const differential = await this._urlDifferential(url, tamperedUrl);
+                    const response = differential.aggregates.payload.representative;
 
-                    const response = await fetch(tamperedUrl, {
-                        method: 'GET',
-                        signal: controller.signal,
-                    });
-                    clearTimeout(timeout);
-
-                    if (response.ok) {
-                        const text = await response.text();
+                    if (differential.confirmed && differential.uniqueDifferential && response?.status >= 200 && response.status < 300) {
+                        const text = response.body || '';
                         if (text.length > 50 && !this._isGenericResponse(text)) {
                             findings.push(createFinding({
                                 module: 'logic',
@@ -161,7 +164,21 @@ export class AccessBoundaryTester {
                                     `2. Change ID ${originalId} to ${testId}`,
                                     `3. Server returns data for the different resource`,
                                 ],
-                                evidence: `Original ID: ${originalId}\nTest ID: ${testId}\nResponse status: ${response.status}\nResponse length: ${text.length} bytes`,
+                                evidence: { originalId, testId, responseStatus: response.status, responseLength: text.length, differential: differential.evidence },
+                                verification: {
+                                    level: 'high_confidence',
+                                    reason: 'The tampered resource request produced a stable response differential beyond the benign control mutation.',
+                                    method: 'idor-response-differential',
+                                    proof: {
+                                        originalRequest: { method: 'GET', url },
+                                        mutatedRequest: { method: 'GET', url: tamperedUrl },
+                                        baselineResponse: differential.evidence.baseline,
+                                        vulnerableResponse: differential.evidence.payload,
+                                        responseDifference: differential.evidence.comparisons,
+                                        reproductionCommand: `curl -i ${JSON.stringify(tamperedUrl)}`,
+                                        accountRole: 'anonymous',
+                                    },
+                                },
                                 remediation: 'Implement authorization checks that verify the requesting user owns the resource. Use UUIDs instead of sequential IDs. Always validate resource ownership server-side.',
                             }));
                             break; // One IDOR per endpoint is enough
@@ -187,18 +204,11 @@ export class AccessBoundaryTester {
         for (const path of this.PREMIUM_PATHS) {
             try {
                 const url = new URL(path, baseUrl).href;
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 5000);
+                const differential = await this._urlDifferential(baseUrl, url, snapshot => snapshot.status === 200 && (snapshot.body?.length || 0) > 100);
+                const response = differential.aggregates.payload.representative;
 
-                const response = await fetch(url, {
-                    method: 'GET',
-                    redirect: 'manual',
-                    signal: controller.signal,
-                });
-                clearTimeout(timeout);
-
-                if (response.status === 200) {
-                    const text = await response.text();
+                if (differential.confirmed && response?.status === 200) {
+                    const text = response.body || '';
                     if (text.length > 100 && !this._isGenericResponse(text)) {
                         findings.push(createFinding({
                             module: 'logic',
@@ -210,7 +220,21 @@ export class AccessBoundaryTester {
                                 `1. Open ${url} without authentication`,
                                 `2. Premium content is accessible`,
                             ],
-                            evidence: `URL: ${url}\nStatus: ${response.status}`,
+                            evidence: { url, status: response.status, differential: differential.evidence },
+                            verification: {
+                                level: 'high_confidence',
+                                reason: 'Repeated unauthenticated requests returned stable premium-feature content unique to the candidate route.',
+                                method: 'premium-access-differential',
+                                proof: {
+                                    originalRequest: { method: 'GET', url },
+                                    mutatedRequest: { method: 'GET', url },
+                                    baselineResponse: differential.evidence.baseline,
+                                    vulnerableResponse: differential.evidence.payload,
+                                    responseDifference: differential.evidence.comparisons,
+                                    reproductionCommand: `curl -i ${JSON.stringify(url)}`,
+                                    accountRole: 'anonymous',
+                                },
+                            },
                             remediation: 'Verify subscription status server-side before serving premium content. Implement tier-based access control in middleware.',
                         }));
                     }
@@ -238,17 +262,12 @@ export class AccessBoundaryTester {
             if (/login|signin|register|signup|forgot|reset/i.test(endpoint.url)) continue;
 
             try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 5000);
+                const endpointOrigin = new URL(endpoint.url).origin + '/';
+                const differential = await this._urlDifferential(endpointOrigin, endpoint.url, snapshot => this._containsSensitiveData(snapshot.body));
+                const response = differential.aggregates.payload.representative;
 
-                const response = await fetch(endpoint.url, {
-                    method: endpoint.method || 'GET',
-                    signal: controller.signal,
-                });
-                clearTimeout(timeout);
-
-                if (response.ok) {
-                    const text = await response.text();
+                if (differential.confirmed && response?.status >= 200 && response.status < 300) {
+                    const text = response.body || '';
                     if (this._containsSensitiveData(text)) {
                         findings.push(createFinding({
                             module: 'logic',
@@ -260,7 +279,21 @@ export class AccessBoundaryTester {
                                 `1. Send ${endpoint.method} to ${endpoint.url} without auth headers`,
                                 `2. Server returns sensitive data`,
                             ],
-                            evidence: `URL: ${endpoint.url}\nMethod: ${endpoint.method}\nStatus: ${response.status}`,
+                            evidence: { url: endpoint.url, method: endpoint.method, status: response.status, differential: differential.evidence },
+                            verification: {
+                                level: 'high_confidence',
+                                reason: 'Repeated unauthenticated requests returned a stable sensitive-data response that differed from the control mutation.',
+                                method: 'guest-access-differential',
+                                proof: {
+                                    originalRequest: { method: endpoint.method || 'GET', url: endpoint.url },
+                                    mutatedRequest: { method: endpoint.method || 'GET', url: endpoint.url },
+                                    baselineResponse: differential.evidence.baseline,
+                                    vulnerableResponse: differential.evidence.payload,
+                                    responseDifference: differential.evidence.comparisons,
+                                    reproductionCommand: `curl -i ${JSON.stringify(endpoint.url)}`,
+                                    accountRole: 'anonymous',
+                                },
+                            },
                             remediation: 'Require authentication tokens on all protected endpoints. Return 401 for unauthenticated requests. Never rely on client-side route guards alone.',
                         }));
                     }
@@ -300,6 +333,18 @@ export class AccessBoundaryTester {
             /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/.test(text) || // phone
             /"(password|token|secret|key)":/i.test(text) || // sensitive fields
             (text.length > 200 && /"(id|user|name|email)":/i.test(text)); // user data
+    }
+
+    async _urlDifferential(baselineUrl, payloadUrl, signal = null) {
+        const baseline = new URL(baselineUrl);
+        const control = new URL(baselineUrl);
+        control.searchParams.set('__vibe_control', '1');
+        return this.differential.run({
+            baseline: { url: baseline.toString(), method: 'GET', redirect: 'manual' },
+            control: { url: control.toString(), method: 'GET', redirect: 'manual' },
+            payload: { url: payloadUrl, method: 'GET', redirect: 'manual' },
+            signal,
+        });
     }
 }
 

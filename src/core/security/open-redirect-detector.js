@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { DifferentialEngine } from '../differential-engine.js';
 
 /**
  * OpenRedirectDetector — Probes URL parameters for open redirect vulnerabilities.
@@ -9,6 +10,7 @@ import { createFinding } from '../../utils/finding.js';
 export class OpenRedirectDetector {
     constructor(logger) {
         this.logger = logger;
+        this.differential = new DifferentialEngine({ logger });
     }
 
     async detect(surfaceInventory) {
@@ -58,17 +60,10 @@ export class OpenRedirectDetector {
                         testUrl.searchParams.set(key, payload);
 
                         try {
-                            const response = await fetch(testUrl.toString(), {
-                                redirect: 'manual',
-                                headers: {
-                                    'User-Agent': 'VIBE SHIELD-SecurityScanner/1.0',
-                                },
-                                signal: AbortSignal.timeout(10000),
-                            });
-
-                            // Check if response redirects to external domain
-                            const location = response.headers.get('location');
-                            if (location && this._isExternalRedirect(location, baseUrl)) {
+                            const differential = await this._testRedirect(page.url, key, payload, baseUrl);
+                            const response = differential.aggregates.payload.representative;
+                            const location = response?.location;
+                            if (differential.confirmed && location && this._isExternalRedirect(location, baseUrl)) {
                                 findings.push(createFinding({
                                     module: 'security',
                                     title: 'Open Redirect Vulnerability',
@@ -85,6 +80,7 @@ export class OpenRedirectDetector {
                                         redirect_location: location,
                                         response_status: response.status,
                                         test_url: testUrl.toString(),
+                                        differential: differential.evidence,
                                     },
                                     verification: {
                                         level: 'high_confidence',
@@ -93,9 +89,9 @@ export class OpenRedirectDetector {
                                         proof: {
                                             originalRequest: { method: 'GET', url: page.url, parameter: key, value },
                                             mutatedRequest: { method: 'GET', url: testUrl.toString(), parameter: key, payload },
-                                            baselineResponse: { originalValue: value },
+                                            baselineResponse: differential.evidence.baseline,
                                             vulnerableResponse: { status: response.status, location },
-                                            responseDifference: { externalRedirectIntroduced: true, destination: location },
+                                            responseDifference: { externalRedirectIntroduced: true, destination: location, differential: differential.evidence.comparisons },
                                             reproductionCommand: `curl -i ${JSON.stringify(testUrl.toString())}`,
                                             accountRole: 'anonymous',
                                         },
@@ -146,14 +142,10 @@ export class OpenRedirectDetector {
                         testUrl.searchParams.set(key, 'https://evil.com');
 
                         try {
-                            const response = await fetch(testUrl.toString(), {
-                                redirect: 'manual',
-                                headers: { 'User-Agent': 'VIBE SHIELD-SecurityScanner/1.0' },
-                                signal: AbortSignal.timeout(10000),
-                            });
-
-                            const location = response.headers.get('location');
-                            if (location && this._isExternalRedirect(location, baseUrl)) {
+                            const differential = await this._testRedirect(link, key, 'https://evil.com', baseUrl);
+                            const response = differential.aggregates.payload.representative;
+                            const location = response?.location;
+                            if (differential.confirmed && location && this._isExternalRedirect(location, baseUrl)) {
                                 findings.push(createFinding({
                                     module: 'security',
                                     title: 'Open Redirect via Link Parameter',
@@ -167,6 +159,7 @@ export class OpenRedirectDetector {
                                         redirect_location: location,
                                         found_on_page: page.url,
                                         test_url: testUrl.toString(),
+                                        differential: differential.evidence,
                                     },
                                     verification: {
                                         level: 'high_confidence',
@@ -175,9 +168,9 @@ export class OpenRedirectDetector {
                                         proof: {
                                             originalRequest: { method: 'GET', url: link },
                                             mutatedRequest: { method: 'GET', url: testUrl.toString(), parameter: key, payload: 'https://evil.com' },
-                                            baselineResponse: { discoveredOnPage: page.url },
+                                            baselineResponse: differential.evidence.baseline,
                                             vulnerableResponse: { status: response.status, location },
-                                            responseDifference: { externalRedirectIntroduced: true, destination: location },
+                                            responseDifference: { externalRedirectIntroduced: true, destination: location, differential: differential.evidence.comparisons },
                                             reproductionCommand: `curl -i ${JSON.stringify(testUrl.toString())}`,
                                             accountRole: 'anonymous',
                                         },
@@ -222,6 +215,24 @@ export class OpenRedirectDetector {
         } catch {
             return false;
         }
+    }
+
+    async _testRedirect(originalUrl, parameter, payload, baseUrl) {
+        const baselineUrl = new URL(originalUrl);
+        const controlUrl = new URL(originalUrl);
+        controlUrl.searchParams.set(parameter, '/.vibe-shield-redirect-control');
+        const payloadUrl = new URL(originalUrl);
+        payloadUrl.searchParams.set(parameter, payload);
+        const request = url => ({
+            url: url.toString(), method: 'GET', redirect: 'manual',
+            headers: { 'User-Agent': 'VIBE-SHIELD-SecurityScanner/1.0' },
+        });
+        return this.differential.run({
+            baseline: request(baselineUrl),
+            control: request(controlUrl),
+            payload: request(payloadUrl),
+            signal: snapshot => Boolean(snapshot.location && this._isExternalRedirect(snapshot.location, baseUrl)),
+        });
     }
 }
 

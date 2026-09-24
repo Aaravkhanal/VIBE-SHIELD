@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { createFinding } from '../../utils/finding.js';
 import { collectParamNames } from '../../utils/param-discovery.js';
+import { DifferentialEngine } from '../differential-engine.js';
 
 function shellQuote(value) {
     return `'${String(value).replaceAll("'", `'\\''`)}'`;
@@ -31,6 +32,7 @@ export class XSSScanner {
         this.logger = logger;
         this.findings = [];
         this._candidateParams = [];
+        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000 });
     }
 
     // Fallback guess-list of common reflected-input parameter names. Used to
@@ -118,6 +120,27 @@ export class XSSScanner {
                         testUrl.searchParams.set(param, payload);
 
                         try {
+                            const controlUrl = new URL(pageData.url);
+                            controlUrl.searchParams.set(param, 'vibe-shield-control');
+                            const differential = await this.differential.run({
+                                baseline: { url: pageData.url, method: 'GET', redirect: 'follow' },
+                                control: { url: controlUrl.toString(), method: 'GET', redirect: 'follow' },
+                                payload: { url: testUrl.toString(), method: 'GET', redirect: 'follow' },
+                                execute: async request => {
+                                    const started = performance.now();
+                                    const response = await page.goto(request.url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+                                    const body = await page.content();
+                                    const markerValue = await page.evaluate(markerName => window[markerName] ?? null, marker).catch(() => null);
+                                    return {
+                                        status: response?.status() || null,
+                                        body,
+                                        durationMs: performance.now() - started,
+                                        finalUrl: page.url(),
+                                        dom: { marker, markerValue, title: await page.title().catch(() => '') },
+                                    };
+                                },
+                                signal: snapshot => snapshot.dom?.markerValue === 1 || snapshot.body.includes(payload),
+                            });
                             const navigation = await page.goto(testUrl.toString(), {
                                 waitUntil: 'domcontentloaded',
                                 timeout: 10000,
@@ -125,14 +148,14 @@ export class XSSScanner {
 
                             // Check if the payload is reflected in the page source
                             const content = await page.content();
-                            const isReflected = content.includes(payload);
+                            const isReflected = content.includes(payload) || differential.aggregates.payload.representative?.body.includes(payload);
 
                             // Check if the XSS actually executed
                             const executed = await page.evaluate((m) => {
                                 return window[m] === 1;
                             }, marker).catch(() => false);
 
-                            if (executed && baselineMarkers[marker] !== 1) {
+                            if (differential.confirmed && executed && baselineMarkers[marker] !== 1) {
                                 this.findings.push(createFinding({
                                     module: 'security',
                                     title: `Reflected XSS via URL Parameter: ${param}`,
@@ -144,7 +167,7 @@ export class XSSScanner {
                                         `2. The ${name} payload executes in the browser`,
                                         `3. Verify with DevTools: window.${marker} === 1`,
                                     ],
-                                    evidence: JSON.stringify({ param, payload, name, executed: true }),
+                                    evidence: JSON.stringify({ param, payload, name, executed: true, differential: differential.evidence }),
                                     verification: {
                                         level: 'confirmed',
                                         reason: `The injected browser marker window.${marker} was observed with value 1 after navigation.`,
@@ -157,9 +180,10 @@ export class XSSScanner {
                                                 url: pageData.url,
                                                 title: baselineTitle,
                                                 markerValue: baselineMarkers[marker],
+                                                differential: differential.evidence.baseline,
                                             },
                                             vulnerableResponse: { status: navigation?.status() || null, finalUrl: page.url(), payloadReflected: isReflected },
-                                            responseDifference: { marker, baselineMarkerValue: baselineMarkers[marker], vulnerableMarkerValue: 1 },
+                                            responseDifference: { marker, baselineMarkerValue: baselineMarkers[marker], vulnerableMarkerValue: 1, differential: differential.evidence.comparisons },
                                             trace: {
                                                 type: 'browser-execution-trace',
                                                 steps: [
@@ -176,7 +200,7 @@ export class XSSScanner {
                                     references: ['https://owasp.org/www-community/attacks/xss/', 'CWE-79'],
                                 }));
                                 break; // One finding per param is sufficient
-                            } else if (isReflected) {
+                            } else if (differential.confirmed && isReflected) {
                                 this.findings.push(createFinding({
                                     module: 'security',
                                     title: `Potential Reflected XSS: ${param} (Payload Reflected)`,
@@ -187,7 +211,7 @@ export class XSSScanner {
                                         `1. Navigate to: ${testUrl.toString()}`,
                                         `2. View page source — payload appears unencoded`,
                                     ],
-                                    evidence: JSON.stringify({ param, payload, name, reflected: true, executed: false }),
+                                    evidence: JSON.stringify({ param, payload, name, reflected: true, executed: false, differential: differential.evidence }),
                                     verification: {
                                         level: 'potential',
                                         reason: 'The payload was reflected without encoding, but browser execution was not observed.',
@@ -195,9 +219,9 @@ export class XSSScanner {
                                         proof: {
                                             originalRequest: { method: 'GET', url: pageData.url },
                                             mutatedRequest: { method: 'GET', url: testUrl.toString(), parameter: param, payload },
-                                            baselineResponse: { status: pageData.status, url: pageData.url },
+                                            baselineResponse: { status: pageData.status, url: pageData.url, differential: differential.evidence.baseline },
                                             vulnerableResponse: { status: navigation?.status() || null, finalUrl: page.url(), payloadReflected: true },
-                                            responseDifference: { payloadReflected: true, markerExecuted: false },
+                                            responseDifference: { payloadReflected: true, markerExecuted: false, differential: differential.evidence.comparisons },
                                             reproductionCommand: `curl -i ${JSON.stringify(testUrl.toString())}`,
                                             accountRole: 'anonymous',
                                         },
@@ -239,7 +263,29 @@ export class XSSScanner {
                         const input = await page.$(`[name="${field.name}"]`) || await page.$(`#${field.name}`);
                         if (!input) continue;
 
-                        await input.fill(testPayload.payload);
+                        const controlValue = 'vibe-shield-control';
+                        const differential = await this.differential.run({
+                            baseline: { value: 'vibe-shield-baseline' },
+                            control: { value: controlValue },
+                            payload: { value: testPayload.payload },
+                            execute: async request => {
+                                await page.goto(form.page, { waitUntil: 'domcontentloaded', timeout: 10000 });
+                                const target = await page.$(`[name="${field.name}"]`) || await page.$(`#${field.name}`);
+                                if (!target) throw new Error(`field ${field.name} not found`);
+                                await target.fill(request.value);
+                                const submit = await page.$(`#${form.id} button[type="submit"]`) || await page.$('button[type="submit"], input[type="submit"]');
+                                if (submit) await submit.click();
+                                await page.waitForTimeout(500);
+                                const body = await page.content();
+                                const markerValue = await page.evaluate(markerName => window[markerName] ?? null, testPayload.marker).catch(() => null);
+                                return { status: 200, body, finalUrl: page.url(), dom: { marker: testPayload.marker, markerValue } };
+                            },
+                            signal: snapshot => snapshot.dom?.markerValue === 1 || snapshot.body.includes(testPayload.payload),
+                        });
+
+                        const currentInput = await page.$(`[name="${field.name}"]`) || await page.$(`#${field.name}`);
+                        if (!currentInput) continue;
+                        await currentInput.fill(testPayload.payload);
 
                         // Submit the form
                         const submitBtn = await page.$(`#${form.id} button[type="submit"]`)
@@ -251,7 +297,7 @@ export class XSSScanner {
 
                             // Check if payload reflected in the response
                             const content = await page.content();
-                            if (content.includes(testPayload.payload)) {
+                            if (differential.confirmed && content.includes(testPayload.payload)) {
                                 this.findings.push(createFinding({
                                     module: 'security',
                                     title: `Form XSS: Input "${field.name}" in ${form.id}`,
@@ -264,7 +310,7 @@ export class XSSScanner {
                                         `3. Submit the form`,
                                         `4. Payload appears unencoded in the response`,
                                     ],
-                                    evidence: JSON.stringify({ form: form.id, field: field.name, payload: testPayload.name }),
+                                    evidence: JSON.stringify({ form: form.id, field: field.name, payload: testPayload.name, differential: differential.evidence }),
                                     verification: {
                                         level: 'high_confidence',
                                         reason: 'The submitted payload was returned unencoded after form submission; script execution was not observed.',
@@ -272,9 +318,9 @@ export class XSSScanner {
                                         proof: {
                                             originalRequest: { method: form.method || 'POST', url: form.action || form.page },
                                             mutatedRequest: { method: form.method || 'POST', url: form.action || form.page, field: field.name, payload: testPayload.payload },
-                                            baselineResponse: { url: form.page },
+                                            baselineResponse: { url: form.page, differential: differential.evidence.baseline },
                                             vulnerableResponse: { finalUrl: page.url(), payloadReflected: true },
-                                            responseDifference: { field: field.name, unencodedPayloadPresent: true },
+                                            responseDifference: { field: field.name, unencodedPayloadPresent: true, differential: differential.evidence.comparisons },
                                             trace: { type: 'browser-form-submission', form: form.id, field: field.name },
                                             reproductionCommand: `Open ${form.page} and submit ${field.name}=${JSON.stringify(testPayload.payload)}`,
                                             accountRole: 'anonymous',

@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { createFinding } from '../../utils/finding.js';
 import { collectParamNames } from '../../utils/param-discovery.js';
+import { DifferentialEngine } from '../differential-engine.js';
 
 /**
  * SQLi Prober — Tests query-bearing inputs for SQL/NoSQL injection vulnerabilities.
@@ -18,6 +19,7 @@ export class SQLiProber {
         this._candidateParams = [];
         // Budget for expensive time-based probes (each adds ~5s of delay).
         this._timeBudget = 12;
+        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000 });
     }
 
     // SQL injection test payloads — detection-only, non-destructive
@@ -167,13 +169,17 @@ export class SQLiProber {
             testUrl.searchParams.set(param, payload);
 
             try {
-                const resp = await fetch(testUrl.toString(), {
-                    signal: AbortSignal.timeout(10000),
-                    redirect: 'follow',
+                const baseValue = this._baseValueFor(baseUrl, param);
+                const differential = await this.differential.run({
+                    baseline: this._variantRequest(baseUrl, param, baseValue),
+                    control: this._variantRequest(baseUrl, param, baseValue, true),
+                    payload: this._variantRequest(baseUrl, param, payload),
+                    signal: snapshot => this._detectSQLError(snapshot.body),
                 });
-                const body = await resp.text();
+                const resp = differential.aggregates.payload.representative;
+                const body = resp?.body || '';
                 const errorMatch = this._detectSQLError(body);
-                if (errorMatch) {
+                if (differential.confirmed && errorMatch) {
                     return createFinding({
                         module: 'security',
                         title: `SQL Injection: ${param} parameter (${name})`,
@@ -185,7 +191,7 @@ export class SQLiProber {
                             `2. Observe database error message in the response`,
                             `3. Error signature: ${errorMatch}`,
                         ],
-                        evidence: JSON.stringify({ param, payload: name, errorSignature: errorMatch, responseSnippet: body.substring(0, 300) }),
+                        evidence: JSON.stringify({ param, payload: name, errorSignature: errorMatch, responseSnippet: body.substring(0, 300), differential: differential.evidence }),
                         verification: {
                             level: 'high_confidence',
                             reason: `A database-specific error signature appeared after the ${name} mutation.`,
@@ -193,9 +199,9 @@ export class SQLiProber {
                             proof: {
                                 originalRequest: { method: 'GET', url: baseUrl },
                                 mutatedRequest: { method: 'GET', url: testUrl.toString(), parameter: param, payload },
-                                baselineResponse: { url: baseUrl },
+                                baselineResponse: differential.evidence.baseline,
                                 vulnerableResponse: { status: resp.status, errorSignature: errorMatch, bodySnippet: body.substring(0, 300) },
-                                responseDifference: { databaseErrorIntroduced: errorMatch },
+                                responseDifference: { databaseErrorIntroduced: errorMatch, differential: differential.evidence },
                                 reproductionCommand: `curl -i ${JSON.stringify(testUrl.toString())}`,
                                 accountRole: 'anonymous',
                             },
@@ -219,33 +225,26 @@ export class SQLiProber {
     async _booleanBlindTest(baseUrl, param) {
         const baseValue = this._baseValueFor(baseUrl, param);
 
-        const baseline = await this._fetchVariant(baseUrl, param, baseValue);
-        if (!baseline) return null;
-
         for (const pair of SQLiProber.BOOLEAN_PAIRS) {
+            const differential = await this.differential.run({
+                baseline: this._variantRequest(baseUrl, param, baseValue),
+                control: this._variantRequest(baseUrl, param, baseValue, true),
+                payload: this._variantRequest(baseUrl, param, baseValue + pair.falsePayload),
+            });
+            if (!differential.confirmed) continue;
+
+            const baseline = differential.aggregates.baseline.representative;
+            const falseResp = differential.aggregates.payload.representative;
             const trueResp = await this._fetchVariant(baseUrl, param, baseValue + pair.truePayload);
-            const falseResp = await this._fetchVariant(baseUrl, param, baseValue + pair.falsePayload);
-            if (!trueResp || !falseResp) continue;
-
-            // Skip if either variant produced a hard error page (covered elsewhere).
+            const trueResp2 = await this._fetchVariant(baseUrl, param, baseValue + pair.truePayload);
+            if (!baseline || !falseResp || !trueResp || !trueResp2) continue;
             const simTrueBase = this._similarity(trueResp, baseline);
+            const simTrueRepeat = this._similarity(trueResp, trueResp2);
             const simTrueFalse = this._similarity(trueResp, falseResp);
-
             const statusDivergence = trueResp.status !== falseResp.status;
+            const confirmed = simTrueBase >= 0.95 && simTrueRepeat >= 0.95 && (simTrueFalse <= 0.85 || statusDivergence);
 
-            // TRUE ≈ baseline, but TRUE clearly differs from FALSE → boolean blind.
-            const booleanSignal =
-                (simTrueBase >= 0.95 && simTrueFalse <= 0.85) || statusDivergence;
-
-            if (booleanSignal) {
-                // Confirm by repeating once to reduce false positives from jitter.
-                const trueResp2 = await this._fetchVariant(baseUrl, param, baseValue + pair.truePayload);
-                const falseResp2 = await this._fetchVariant(baseUrl, param, baseValue + pair.falsePayload);
-                const confirmed = trueResp2 && falseResp2 &&
-                    ((this._similarity(trueResp2, baseline) >= 0.95 && this._similarity(trueResp2, falseResp2) <= 0.85) ||
-                        trueResp2.status !== falseResp2.status);
-
-                if (!confirmed) continue;
+            if (confirmed) {
 
                 return createFinding({
                     module: 'security',
@@ -267,6 +266,7 @@ export class SQLiProber {
                         simTrueVsFalse: Number(simTrueFalse.toFixed(3)),
                         trueStatus: trueResp.status,
                         falseStatus: falseResp.status,
+                        differential: differential.evidence,
                     }),
                     verification: {
                         level: 'high_confidence',
@@ -275,9 +275,9 @@ export class SQLiProber {
                         proof: {
                             originalRequest: { method: 'GET', url: baseUrl, parameter: param, value: baseValue },
                             mutatedRequest: { method: 'GET', url: baseUrl, truePayload: pair.truePayload, falsePayload: pair.falsePayload },
-                            baselineResponse: { status: baseline.status, bodyLength: baseline.body.length },
+                            baselineResponse: differential.evidence.baseline,
                             vulnerableResponse: { trueStatus: trueResp.status, falseStatus: falseResp.status, repeated: true },
-                            responseDifference: { simTrueVsBaseline: Number(simTrueBase.toFixed(3)), simTrueVsFalse: Number(simTrueFalse.toFixed(3)), statusDivergence },
+                            responseDifference: { simTrueVsBaseline: Number(simTrueBase.toFixed(3)), simTrueVsFalse: Number(simTrueFalse.toFixed(3)), statusDivergence, differential: differential.evidence },
                             reproductionCommand: `curl -i ${JSON.stringify(new URL(baseUrl).toString())} # repeat with ${param} TRUE and FALSE payloads from report`,
                             accountRole: 'anonymous',
                         },
@@ -295,27 +295,22 @@ export class SQLiProber {
      */
     async _timeBlindTest(baseUrl, param) {
         const baseValue = this._baseValueFor(baseUrl, param);
-
-        // Establish a control latency (fastest of two benign requests).
-        const c1 = await this._timeVariant(baseUrl, param, baseValue);
-        const c2 = await this._timeVariant(baseUrl, param, baseValue);
-        if (c1 === null && c2 === null) return null;
-        const control = Math.min(...[c1, c2].filter(t => t !== null));
-
         const sleepMs = SQLiProber.SLEEP_SECONDS * 1000;
-        const threshold = control + sleepMs - 1500; // allow ~1.5s slack
 
         for (const { db, payload } of SQLiProber.TIME_PAYLOADS) {
             if (this._timeBudget <= 0) break;
             this._timeBudget--;
 
-            const delayed = await this._timeVariant(baseUrl, param, baseValue + payload);
-            if (delayed === null) continue;
+            const differential = await this.differential.run({
+                baseline: this._variantRequest(baseUrl, param, baseValue, false, (SQLiProber.SLEEP_SECONDS + 8) * 1000),
+                control: this._variantRequest(baseUrl, param, baseValue, true, (SQLiProber.SLEEP_SECONDS + 8) * 1000),
+                payload: this._variantRequest(baseUrl, param, baseValue + payload, false, (SQLiProber.SLEEP_SECONDS + 8) * 1000),
+            });
+            const control = Math.max(differential.timing.baselineMedianMs || 0, differential.timing.controlMedianMs || 0);
+            const delayed = differential.timing.payloadMedianMs;
+            const threshold = control + sleepMs - 1500;
 
-            if (delayed >= threshold) {
-                // Confirm once more to rule out a transient slow response.
-                const confirm = await this._timeVariant(baseUrl, param, baseValue + payload);
-                if (confirm === null || confirm < threshold) continue;
+            if (differential.confirmed && differential.timing.payloadSpecific && delayed >= threshold) {
 
                 return createFinding({
                     module: 'security',
@@ -344,8 +339,8 @@ export class SQLiProber {
                             originalRequest: { method: 'GET', url: baseUrl, parameter: param, value: baseValue },
                             mutatedRequest: { method: 'GET', url: baseUrl, parameter: param, payload },
                             baselineResponse: { controlMs: control },
-                            vulnerableResponse: { firstDelayMs: delayed, confirmationDelayMs: confirm },
-                            responseDifference: { thresholdMs: threshold, observedDeltaMs: delayed - control, repeated: true },
+                            vulnerableResponse: differential.evidence.payload,
+                            responseDifference: { thresholdMs: threshold, observedDeltaMs: delayed - control, repeated: true, differential: differential.evidence },
                             reproductionCommand: `curl -o /dev/null -s -w '%{time_total}\\n' ${JSON.stringify(baseUrl)}`,
                             accountRole: 'anonymous',
                         },
@@ -356,6 +351,13 @@ export class SQLiProber {
             }
         }
         return null;
+    }
+
+    _variantRequest(baseUrl, param, value, harmlessControl = false, timeoutMs = 10000) {
+        const url = new URL(baseUrl);
+        url.searchParams.set(param, value);
+        if (harmlessControl) url.searchParams.set('__vibe_control', '1');
+        return { url: url.toString(), method: 'GET', redirect: 'follow', timeoutMs };
     }
 
     /**

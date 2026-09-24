@@ -14,6 +14,7 @@ import { createFinding, normalizeVerification, verificationSummary } from '../sr
 import { domainMetadata, organizationScopes } from '../src/utils/domain-scope.js';
 import { SubdomainScanner } from '../src/core/security/subdomain-scanner.js';
 import { InfraScanner } from '../src/core/security/infra-scanner.js';
+import { DifferentialEngine } from '../src/core/differential-engine.js';
 
 const report = (target = 'http://fixture.test/') => ({ meta: { target, modules: ['security'], scannedAt: new Date().toISOString() }, coverage: { status: 'complete' }, agents: {}, surfaceInventory: { totalPages: 1 }, summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0, info: 0 }, findings: [] });
 const scan = (scanId = 'test') => ({ scanId, url: 'http://fixture.test/', startTime: Date.now(), agents: { 'VIBE-SHIELD-SEC': { status: 'pending' } }, terminalLogs: [] });
@@ -218,6 +219,48 @@ test('infrastructure endpoints require fingerprints and reject SPA catch-all res
     assert.equal(scanner.findings.length, 1);
     assert.equal(scanner.findings[0].title, 'Verified Public Endpoint: Prometheus metrics endpoint');
     assert.equal(scanner.findings[0].verification.level, 'high_confidence');
+});
+
+test('differential engine repeats baseline, control, and payload while comparing structure, redirects, cookies, timing, and DOM', async () => {
+    const engine = new DifferentialEngine({ repetitions: 2 });
+    const result = await engine.run({
+        baseline: { variant: 'baseline' },
+        control: { variant: 'control' },
+        payload: { variant: 'payload' },
+        execute: async request => ({
+            status: request.variant === 'payload' ? 200 : 200,
+            body: request.variant === 'payload' ? '<main>PAYLOAD_MARKER</main>' : '<main>normal</main>',
+            headers: request.variant === 'payload' ? { 'set-cookie': 'vibe=payload' } : {},
+            finalUrl: request.variant === 'payload' ? 'https://fixture.test/redirected' : 'https://fixture.test/',
+            durationMs: request.variant === 'payload' ? 900 : 20,
+            dom: { marker: request.variant === 'payload' ? 1 : 0 },
+        }),
+        signal: snapshot => snapshot.dom?.marker === 1,
+    });
+    assert.equal(result.confirmed, true);
+    assert.equal(result.samples.baseline.length, 2);
+    assert.equal(result.samples.control.length, 2);
+    assert.equal(result.samples.payload.length, 2);
+    assert.equal(result.payloadSignalOnly, true);
+    assert.equal(result.comparisons.baselinePayload.redirectChanged, true);
+    assert.equal(result.comparisons.baselinePayload.cookiesChanged, true);
+    assert.equal(result.timing.payloadSpecific, true);
+    assert.equal(result.evidence.payload.dom.marker, 1);
+});
+
+test('differential engine treats a repeatable unavailable control as stable evidence', async () => {
+    const engine = new DifferentialEngine({ repetitions: 2 });
+    const result = await engine.run({
+        baseline: { variant: 'baseline' },
+        control: { variant: 'control' },
+        payload: { variant: 'payload' },
+        execute: async request => request.variant === 'control'
+            ? { error: 'connect ECONNREFUSED fixture.invalid:443' }
+            : { status: 200, body: request.variant === 'payload' ? 'internal metadata' : 'normal' },
+        signal: snapshot => snapshot.body.includes('internal metadata'),
+    });
+    assert.equal(result.aggregates.control.stable, true);
+    assert.equal(result.confirmed, true);
 });
 
 test('IDs preserve requested URL-safe length and reject invalid bounds', async () => {

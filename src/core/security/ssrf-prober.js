@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { DifferentialEngine } from '../differential-engine.js';
 
 /**
  * SSRFProber — Tests URL parameters and form inputs for Server-Side Request Forgery.
@@ -12,6 +13,7 @@ import { createFinding } from '../../utils/finding.js';
 export class SSRFProber {
     constructor(logger) {
         this.logger = logger;
+        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000 });
     }
 
     async probe(surfaceInventory) {
@@ -65,14 +67,10 @@ export class SSRFProber {
                         testUrl.searchParams.set(key, payload.url);
 
                         try {
-                            const response = await fetch(testUrl.toString(), {
-                                redirect: 'follow',
-                                headers: { 'User-Agent': 'VIBE SHIELD-SecurityScanner/1.0' },
-                                signal: AbortSignal.timeout(10000),
-                            });
-
-                            const body = await response.text();
-                            const isSSRF = this._detectSSRFResponse(body, response.status, payload);
+                            const differential = await this._testPayload(page.url, key, value, payload);
+                            const response = differential.aggregates.payload.representative;
+                            const body = response?.body || '';
+                            const isSSRF = differential.confirmed && this._detectSSRFResponse(body, response?.status, payload);
 
                             if (isSSRF) {
                                 findings.push(createFinding({
@@ -93,6 +91,21 @@ export class SSRFProber {
                                         response_status: response.status,
                                         response_snippet: body.slice(0, 500),
                                         test_url: testUrl.toString(),
+                                        differential: differential.evidence,
+                                    },
+                                    verification: {
+                                        level: 'high_confidence',
+                                        reason: 'Repeated internal-resource payloads produced a stable signal absent from both the normal request and harmless external control.',
+                                        method: 'repeated-ssrf-differential',
+                                        proof: {
+                                            originalRequest: { method: 'GET', url: page.url, parameter: key, value },
+                                            mutatedRequest: { method: 'GET', url: testUrl.toString(), parameter: key, payload: payload.url },
+                                            baselineResponse: differential.evidence.baseline,
+                                            vulnerableResponse: differential.evidence.payload,
+                                            responseDifference: differential.evidence,
+                                            reproductionCommand: `curl -i ${JSON.stringify(testUrl.toString())}`,
+                                            accountRole: 'anonymous',
+                                        },
                                     },
                                     reproduction: [
                                         `1. Open: ${testUrl.toString()}`,
@@ -145,17 +158,22 @@ export class SSRFProber {
 
                 findings.push(createFinding({
                     module: 'security',
-                    title: `Potential SSRF Vector: ${api.method} ${apiUrl.pathname}`,
-                    severity: 'low',
+                    title: `SSRF Input Surface Not Assessed: ${api.method} ${apiUrl.pathname}`,
+                    severity: 'info',
                     affected_surface: api.url,
                     description:
                         `API endpoint ${api.method} ${apiUrl.pathname} has a path pattern commonly ` +
                         `associated with SSRF (${ssrfPathPatterns.find(p => apiUrl.pathname.toLowerCase().includes(p))}). ` +
-                        `If this endpoint accepts URLs in request body, it may be vulnerable to SSRF.`,
+                        `The request-body schema was not available, so the scanner did not inject or verify an SSRF payload.`,
                     evidence: {
                         method: api.method,
                         path: apiUrl.pathname,
                         status: api.status,
+                    },
+                    verification: {
+                        level: 'not_assessed',
+                        reason: 'The endpoint path suggests URL processing, but no request-body field could be identified for controlled differential testing.',
+                        method: 'surface-discovery',
                     },
                     remediation: 'Ensure all URL inputs to this endpoint are validated against an allowlist.',
                 }));
@@ -201,6 +219,24 @@ export class SSRFProber {
         }
 
         return false;
+    }
+
+    async _testPayload(originalUrl, parameter, originalValue, payload) {
+        const makeUrl = value => {
+            const url = new URL(originalUrl);
+            url.searchParams.set(parameter, value);
+            return url.toString();
+        };
+        const request = value => ({
+            url: makeUrl(value), method: 'GET', redirect: 'follow',
+            headers: { 'User-Agent': 'VIBE-SHIELD-SecurityScanner/1.0' }, timeoutMs: 10000,
+        });
+        return this.differential.run({
+            baseline: request(originalValue),
+            control: request('https://example.invalid/vibe-shield-control'),
+            payload: request(payload.url),
+            signal: snapshot => this._detectSSRFResponse(snapshot.body, snapshot.status, payload),
+        });
     }
 }
 
