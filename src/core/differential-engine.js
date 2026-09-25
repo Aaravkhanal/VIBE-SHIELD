@@ -128,13 +128,15 @@ function aggregate(samples) {
 }
 
 export class DifferentialEngine {
-    constructor({ repetitions = 2, timeoutMs = 10000, logger = null } = {}) {
+    constructor({ repetitions = 2, timeoutMs = 10000, logger = null, coverageTracker = null } = {}) {
         this.repetitions = Math.max(2, repetitions);
         this.timeoutMs = timeoutMs;
         this.logger = logger;
+        this.coverageTracker = coverageTracker;
     }
 
     async run({ baseline, control, payload, execute = null, signal = null, repetitions = this.repetitions, transform = null }) {
+        this.coverageTracker?.mutation(baseline, payload);
         const variants = { baseline, control, payload };
         const samples = { baseline: [], control: [], payload: [] };
         const runner = execute || ((request) => this.fetch(request));
@@ -196,6 +198,8 @@ export class DifferentialEngine {
                 signal: AbortSignal.timeout(request.timeoutMs || this.timeoutMs),
             });
             const body = await response.text();
+            this.coverageTracker?.apiTested(request.url, request.method || 'GET', response.status);
+            this.coverageTracker?.response(request.url, response.status, Object.fromEntries(response.headers.entries()), body);
             return normalizeSnapshot({
                 status: response.status,
                 body,

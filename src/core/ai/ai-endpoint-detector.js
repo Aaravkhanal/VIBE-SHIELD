@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { trackedFetch } from '../../utils/coverage-tracker.js';
 
 /**
  * AIEndpointDetector — Discovers LLM-backed endpoints in the target application.
@@ -10,8 +11,9 @@ import { createFinding } from '../../utils/finding.js';
  * 4. Content-Type analysis: streaming responses (text/event-stream)
  */
 export class AIEndpointDetector {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
+        this._fetch = (url, options) => trackedFetch(coverageTracker, url, options);
 
         // URL patterns that indicate AI/LLM endpoints
         this.AI_PATH_PATTERNS = [
@@ -183,7 +185,7 @@ export class AIEndpointDetector {
                     const timeout = setTimeout(() => controller.abort(), 10000);
 
                     const startTime = Date.now();
-                    const response = await fetch(url, {
+                    const response = await this._fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(body),

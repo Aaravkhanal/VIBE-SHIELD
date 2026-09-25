@@ -10,9 +10,10 @@ import { createFinding } from '../utils/finding.js';
  *   - Detects 429/503 rate limiting and backs off automatically
  */
 export class Crawler {
-    constructor(config, logger) {
+    constructor(config, logger, coverageTracker = null) {
         this.config = config;
         this.logger = logger;
+        this.coverageTracker = coverageTracker;
 
         // State
         this.visited = new Set();
@@ -49,6 +50,7 @@ export class Crawler {
             urlStr = 'https://' + urlStr;
         }
         this.baseUrl = new URL(urlStr);
+        this.coverageTracker?.pageDiscovered(urlStr);
 
         let browser;
         try {
@@ -89,6 +91,7 @@ export class Crawler {
             for (const link of seedLinks) {
                 if (this._isSameOrigin(link)) {
                     queue.push({ url: link, depth: 0 });
+                    this.coverageTracker?.pageDiscovered(link);
                 }
             }
 
@@ -153,6 +156,7 @@ export class Crawler {
                     if (item.depth > self.maxDepth) continue;
 
                     self.visited.add(normalizedUrl);
+                    self.coverageTracker?.pageDiscovered(item.url);
                     activeWorkers++;
 
                     // Crawl this page in a worker
@@ -265,6 +269,8 @@ export class Crawler {
 
                 // Discover API endpoints — expanded detection
                 if (this._isSameOrigin(reqUrl) && this._isApiRequest(reqUrl, contentType, resourceType, method)) {
+                    this.coverageTracker?.apiDiscovered(reqUrl, method);
+                    this.coverageTracker?.response(reqUrl, status, response.headers());
                     const apiKey = `${method}::${this._stripQueryParams(reqUrl)}`;
                     const existing = this.apiEndpoints.find(e => `${e.method}::${this._stripQueryParams(e.url)}` === apiKey);
                     if (!existing) {
@@ -308,7 +314,16 @@ export class Crawler {
             // Follow canonical redirects (e.g. apex to www) before discovering links.
             if (depth === 0 && response) this.baseUrl = new URL(page.url());
             pageData.url = page.url();
+            this.coverageTracker?.pageScanned(pageData.url, pageData.status);
+            this.coverageTracker?.response(pageData.url, pageData.status, pageData.headers);
             pageData.title = await page.title();
+            if ([403, 429, 503].includes(pageData.status)) {
+                pageData.bodySnippet = (await page.locator('body').innerText().catch(() => '')).slice(0, 1000);
+                this.coverageTracker?.response(pageData.url, pageData.status, pageData.headers, pageData.bodySnippet);
+            }
+            if (await page.locator('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], .g-recaptcha, .h-captcha, .cf-turnstile').count().catch(() => 0)) {
+                this.coverageTracker?.blockedTest('captcha', pageData.url, 'CAPTCHA widget blocked automated interaction');
+            }
 
             // Rate limit check on main page response
             if (pageData.status === 429 || pageData.status === 503) {
@@ -321,6 +336,7 @@ export class Crawler {
                 return anchors.map(a => a.href).filter(href => href && !href.startsWith('javascript:'));
             });
             pageData.links = [...new Set(links)];
+            for (const link of pageData.links) if (this._isSameOrigin(link)) this.coverageTracker?.pageDiscovered(link);
             discoveredLinks.push(...pageData.links);
 
             // Extract forms (with CSRF token detection for downstream)
@@ -361,6 +377,7 @@ export class Crawler {
             for (const form of pageForms) {
                 form.page = normalizedUrl;
                 this.forms.push(form);
+                this.coverageTracker?.formDiscovered(form);
             }
             pageData.forms = pageForms;
 
@@ -379,6 +396,7 @@ export class Crawler {
             pageData.status = 'error';
             pageData.error = err.message;
             this.surfaces.push(pageData);
+            this.coverageTracker?.pageDiscovered(normalizedUrl);
             this.logger?.warn?.(`Failed to crawl ${normalizedUrl}: ${err.message}`);
         } finally {
             await page.close();

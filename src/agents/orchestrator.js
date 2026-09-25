@@ -3,6 +3,7 @@ import { FindingsLedger } from './findings-ledger.js';
 import { getVersion } from '../utils/version.js';
 import { LLMClient } from '../core/llm/llm-client.js';
 import { enrichCorrelation, triageFinding } from '../core/llm/augmentations.js';
+import { CoverageTracker } from '../utils/coverage-tracker.js';
 
 /**
  * Orchestrator — Central coordinator for the VIBE SHIELD multi-agent system.
@@ -25,6 +26,7 @@ export class Orchestrator {
         // shared with all agents via context so any agent can opt in. Returns
         // null on every call when disabled/unavailable → callers degrade.
         this.llmClient = new LLMClient(config, logger);
+        this.coverageTracker = new CoverageTracker(config.target_url || 'http://localhost');
 
         this._agents = new Map();       // name → agent instance
         this._sharedContext = {         // passed to all agents
@@ -34,6 +36,7 @@ export class Orchestrator {
             ledger: this.ledger,
             surfaceInventory: null,       // set by VIBE-SHIELD-CRAWL
             llmClient: this.llmClient,    // optional; null-equivalent when disabled
+            coverageTracker: this.coverageTracker,
         };
 
         this._startTime = null;
@@ -232,6 +235,7 @@ export class Orchestrator {
                 duration: agent.duration,
                 findingsCount: agent.findings.length,
                 errors: agent.errors,
+                skippedChecks: agent.skippedChecks,
                 assessment: agent.assessment,
             };
         }
@@ -245,6 +249,7 @@ export class Orchestrator {
             correlations: exported.correlations,
             agents: agentSummaries,
             surfaceInventory: this._sharedContext.surfaceInventory,
+            coverageManifest: this.coverageTracker.manifest(agentSummaries, this._sharedContext.surfaceInventory),
             duration,
             eventLog: this.eventBus.getLog(),
         };

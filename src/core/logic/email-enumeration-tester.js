@@ -12,9 +12,9 @@ import { DifferentialEngine } from '../differential-engine.js';
  *   - Response timing differences (side-channel)
  */
 export class EmailEnumerationTester {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
-        this.differential = new DifferentialEngine({ logger, timeoutMs: 15000 });
+        this.differential = new DifferentialEngine({ logger, timeoutMs: 15000, coverageTracker });
     }
 
     async test(businessContext, surfaceInventory) {

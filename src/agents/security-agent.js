@@ -42,8 +42,10 @@ export class SecurityAgent extends BaseAgent {
         // safe-active. In passive mode we only run read-only/analysis checks.
         const allowActive = allows(config, 'safe-active');
         const safetyMode = getSafetyMode(config);
-        const skipActive = (label) =>
+        const skipActive = (label) => {
+            this.skipCheck(label, `Requires active probing; current safety mode is ${safetyMode}`);
             this._log(`${label} skipped — requires active probing (current: ${safetyMode} mode)`);
+        };
 
         const phases = [
             { name: 'headers', label: 'Analyzing security headers' },
@@ -94,7 +96,7 @@ export class SecurityAgent extends BaseAgent {
         if (allowActive) {
             this.progress(phases[2].name, phases[2].label, (completedPhases / phases.length) * 100);
             try {
-                const scanner = new XSSScanner(logger);
+                const scanner = new XSSScanner(logger, context.coverageTracker);
                 const findings = await scanner.scan(surfaceInventory);
                 this.addFindings(findings);
                 this._log(`XSS: ${findings.length} vulnerabilities`);
@@ -110,7 +112,7 @@ export class SecurityAgent extends BaseAgent {
         if (allowActive) {
             this.progress(phases[3].name, phases[3].label, (completedPhases / phases.length) * 100);
             try {
-                const prober = new SQLiProber(logger);
+                const prober = new SQLiProber(logger, context.coverageTracker);
                 const findings = await prober.probe(surfaceInventory);
                 this.addFindings(findings);
                 this._log(`SQLi: ${findings.length} vulnerabilities`);
@@ -194,7 +196,7 @@ export class SecurityAgent extends BaseAgent {
         if (allowActive) {
             this.progress(phases[9].name, phases[9].label, (completedPhases / phases.length) * 100);
             try {
-                const detector = new OpenRedirectDetector(logger);
+                const detector = new OpenRedirectDetector(logger, context.coverageTracker);
                 const findings = await detector.detect(surfaceInventory);
                 this.addFindings(findings);
                 this._log(`Open redirects: ${findings.length} issues`);
@@ -258,7 +260,7 @@ export class SecurityAgent extends BaseAgent {
         if (allowActive) {
             this.progress(phases[14].name, phases[14].label, (completedPhases / phases.length) * 100);
             try {
-                const prober = new SSRFProber(logger);
+                const prober = new SSRFProber(logger, context.coverageTracker);
                 const findings = await prober.probe(surfaceInventory);
                 this.addFindings(findings);
                 this._log(`SSRF: ${findings.length} issues`);

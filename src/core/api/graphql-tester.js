@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { trackedFetch } from '../../utils/coverage-tracker.js';
 
 /**
  * GraphQLTester — Tests GraphQL-specific vulnerabilities.
@@ -12,8 +13,9 @@ import { createFinding } from '../../utils/finding.js';
  * - Missing query depth/complexity limits
  */
 export class GraphQLTester {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
+        this._fetch = (url, options) => trackedFetch(coverageTracker, url, options);
 
         this.GRAPHQL_PATHS = [
             '/graphql', '/api/graphql', '/graphql/v1', '/gql',
@@ -71,7 +73,7 @@ export class GraphQLTester {
                 const url = new URL(path, baseUrl).href;
 
                 // Test with a simple introspection field
-                const response = await fetch(url, {
+                const response = await this._fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query: '{ __typename }' }),
@@ -104,7 +106,7 @@ export class GraphQLTester {
         }`;
 
         try {
-            const response = await fetch(endpoint, {
+            const response = await this._fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query: introspectionQuery }),
@@ -151,7 +153,7 @@ export class GraphQLTester {
         }));
 
         try {
-            const response = await fetch(endpoint, {
+            const response = await this._fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(batchPayload),
@@ -209,7 +211,7 @@ export class GraphQLTester {
 
         try {
             const startTime = Date.now();
-            const response = await fetch(endpoint, {
+            const response = await this._fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query: deepQuery }),
@@ -246,7 +248,7 @@ export class GraphQLTester {
         const typoQuery = `{ usrs { id naem emial } }`;
 
         try {
-            const response = await fetch(endpoint, {
+            const response = await this._fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query: typoQuery }),

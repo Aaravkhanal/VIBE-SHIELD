@@ -269,6 +269,7 @@ async function runScan(rawUrl, options, modulesToRun) {
             correlations: results.correlations,
             testSummary: { ...testSummary, duration },
             surfaceInventory: results.surfaceInventory,
+            coverageManifest: results.coverageManifest,
             outputDir: config.output_dir,
             modules: modulesToRun,
         });

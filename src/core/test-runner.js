@@ -8,9 +8,10 @@ import path from 'path';
  * Captures screenshots on failure, records pass/fail, and generates findings.
  */
 export class TestRunner {
-    constructor(config, logger) {
+    constructor(config, logger, coverageTracker = null) {
         this.config = config;
         this.logger = logger;
+        this.coverageTracker = coverageTracker;
         this.results = [];
         this.findings = [];
         this.screenshotDir = path.join(config.output_dir || 'vibe-shield-reports', 'screenshots');
@@ -70,6 +71,10 @@ export class TestRunner {
      */
     async _executeTest(context, testCase) {
         const page = await context.newPage();
+        if (testCase.type === 'form' && this.coverageTracker) {
+            await page.exposeFunction('__vibeRecordFormSubmit', () => this.coverageTracker.formSubmitted({ page: testCase.surface, id: testCase.formId, method: testCase.formMethod }));
+            await page.addInitScript(() => document.addEventListener('submit', () => window.__vibeRecordFormSubmit(), true));
+        }
         const startTime = Date.now();
         const consoleErrors = [];
         let status = 'pass';
@@ -245,6 +250,7 @@ export class TestRunner {
                         const resp = await fetch(opts.url, { method: opts.method });
                         return { status: resp.status, ok: resp.ok };
                     }, step);
+                    this.coverageTracker?.apiTested(step.url, step.method || 'GET', fetchResp.status);
                     if (!fetchResp.ok && step.expected) {
                         const expected = Array.isArray(step.expected) ? step.expected : [step.expected];
                         if (!expected.includes(fetchResp.status)) {

@@ -4,36 +4,41 @@
  */
 
 export function calculateSecurityScore(report) {
-    if (!report || report.coverage?.status !== 'complete' || !(report.surfaceInventory?.totalPages > 0)) {
+    const coverage = report?.coverage?.manifest;
+    if (!report || report.coverage?.status !== 'complete' || !coverage?.measured || !(coverage.pages?.discovered > 0) || !Number.isFinite(coverage.percent)) {
         return { overallScore: null, grade: 'N/A', gradeColor: '#64748b', statusText: 'Insufficient scan coverage',
+            coveragePercent: coverage?.percent ?? null, riskScore: null, coverageCap: null,
             subCategories: Object.fromEntries(['headers', 'aiSafety', 'apiAuth', 'logic'].map(key => [key, { score: null, issues: 0 }])), badgeMarkdown: '', badgeHtml: '' };
     }
-    const summary = report.dedupSummary || report.summary || { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
-    const findings = report.findings || [];
-
-    // Base score starts at 100
-    let deductions = 0;
-    deductions += (summary.critical || 0) * 25;
-    deductions += (summary.high || 0) * 12;
-    deductions += (summary.medium || 0) * 4;
-    deductions += (summary.low || 0) * 1;
-
-    const overallScore = Math.max(0, Math.min(100, Math.round(100 - deductions)));
+    const findings = report.scoringFindings || report.findings || [];
+    const hasCritical = findings.some(finding => finding.severity === 'critical');
+    const hasHigh = findings.some(finding => finding.severity === 'high');
+    const severityPenalty = { critical: 25, high: 12, medium: 4, low: 1, info: 0 };
+    const confidenceWeight = { confirmed: 1, high_confidence: 0.8, potential: 0.35, informational: 0.1, not_assessed: 0 };
+    const deductions = findings.reduce((sum, finding) => {
+        const level = finding.verification?.level || (finding.severity === 'info' ? 'informational' : 'potential');
+        return sum + (severityPenalty[finding.severity] || 0) * (confidenceWeight[level] ?? confidenceWeight.potential);
+    }, 0);
+    const riskScore = Math.max(0, Math.min(100, Math.round(100 - deductions)));
+    // Unknown areas cannot earn a clean bill of health. At 10% measured
+    // coverage the best possible score is 46, even with zero findings.
+    const coverageCap = Math.max(0, Math.min(100, Math.round(40 + 0.6 * coverage.percent)));
+    const overallScore = Math.min(riskScore, coverageCap);
 
     // Determine Letter Grade
     let grade = 'F';
     let gradeColor = '#ff3366'; // Red
     let statusText = 'Critical Vulnerabilities Detected';
 
-    if (overallScore >= 97 && summary.critical === 0 && summary.high === 0) {
+    if (overallScore >= 97 && !hasCritical && !hasHigh) {
         grade = 'A+';
         gradeColor = '#00ff88'; // Neon Green
         statusText = 'No high-severity findings in tested scope';
-    } else if (overallScore >= 90 && summary.critical === 0 && summary.high === 0) {
+    } else if (overallScore >= 90 && !hasCritical && !hasHigh) {
         grade = 'A';
         gradeColor = '#00ff88';
         statusText = 'Low observed risk in tested scope';
-    } else if (overallScore >= 80 && summary.critical === 0) {
+    } else if (overallScore >= 80 && !hasCritical) {
         grade = 'B';
         gradeColor = '#00e5ff'; // Cyan
         statusText = 'Good Security with Minor Gaps';
@@ -48,8 +53,9 @@ export function calculateSecurityScore(report) {
     } else {
         grade = 'F';
         gradeColor = '#ff3366';
-        statusText = 'Severe Exploitable Threats';
+        statusText = 'High risk or limited verified coverage';
     }
+    if (coverageCap < riskScore) statusText = `Coverage limited this grade (${coverage.percent}% measured)`;
 
     // Compute Sub-Scores (0-100 each)
     const subCategories = {
@@ -63,7 +69,8 @@ export function calculateSecurityScore(report) {
         const title = (f.title || '').toLowerCase();
         const mod = (f.module || f.agent || '').toLowerCase();
         const sev = f.severity || 'low';
-        const penalty = sev === 'critical' ? 30 : sev === 'high' ? 18 : sev === 'medium' ? 8 : 2;
+        const level = f.verification?.level || (sev === 'info' ? 'informational' : 'potential');
+        const penalty = (sev === 'critical' ? 30 : sev === 'high' ? 18 : sev === 'medium' ? 8 : sev === 'low' ? 2 : 0) * (confidenceWeight[level] ?? confidenceWeight.potential);
 
         if (mod.includes('sec') || title.includes('csp') || title.includes('header') || title.includes('cors') || title.includes('tls')) {
             subCategories.headers.score = Math.max(0, subCategories.headers.score - penalty);
@@ -91,6 +98,9 @@ export function calculateSecurityScore(report) {
 
     return {
         overallScore,
+        riskScore,
+        coveragePercent: coverage.percent,
+        coverageCap,
         grade,
         gradeColor,
         statusText,

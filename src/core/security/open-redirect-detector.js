@@ -8,9 +8,9 @@ import { DifferentialEngine } from '../differential-engine.js';
  * navigation to external domains.
  */
 export class OpenRedirectDetector {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
-        this.differential = new DifferentialEngine({ logger });
+        this.differential = new DifferentialEngine({ logger, coverageTracker });
     }
 
     async detect(surfaceInventory) {

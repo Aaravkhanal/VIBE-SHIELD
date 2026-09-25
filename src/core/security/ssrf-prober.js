@@ -12,9 +12,9 @@ import { observedWebCvss } from '../../utils/cvss-evidence.js';
  *   - Detects if server fetches attacker-controlled URLs
  */
 export class SSRFProber {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
-        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000 });
+        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000, coverageTracker });
     }
 
     async probe(surfaceInventory) {

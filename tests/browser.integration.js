@@ -85,6 +85,10 @@ try {
     assert.equal(status.status, 'completed', JSON.stringify(status));
     assert.equal(status.report.meta.target, target + '/');
     assert.ok(status.report.findings.length > 0);
+    assert.ok(status.report.coverage.manifest.measured);
+    assert.ok(status.report.coverage.manifest.pages.discovered >= status.report.coverage.manifest.pages.scanned);
+    assert.ok(status.report.coverage.manifest.percent >= 0 && status.report.coverage.manifest.percent <= 100);
+    assert.ok(status.score <= Math.round(40 + 0.6 * status.report.coverage.manifest.percent));
     assert.ok(status.terminalLogs.some(l => l.text.includes('headers') || l.text.includes('Headers')));
     await page.waitForSelector('#results-section:not(.hidden)', { timeout: 5000 });
     assert.equal(await page.locator('#count-total').textContent(), String(status.report.dedupSummary.total));

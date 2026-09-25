@@ -52,10 +52,12 @@ export class LogicAgent extends BaseAgent {
         const allowActive = allows(config, 'safe-active');
 
         const skipDestructive = (label, phase, pct) => {
+            this.skipCheck(label, `Requires aggressive mode; current safety mode is ${safetyMode}`);
             this._log(`${label} skipped — requires --aggressive safety mode (current: ${safetyMode})`);
             this.progress(phase, `${label} skipped (safe mode)`, pct);
         };
         const skipActive = (label, phase, pct) => {
+            this.skipCheck(label, `Requires active probing; current safety mode is ${safetyMode}`);
             this._log(`${label} skipped — requires active probing (current: ${safetyMode} mode)`);
             this.progress(phase, `${label} skipped (passive mode)`, pct);
         };
@@ -94,7 +96,7 @@ export class LogicAgent extends BaseAgent {
         if (allowDestructive) {
             this.progress('pricing', 'Testing pricing & payment logic...', (completed / totalPhases) * 100);
             try {
-                const exploiter = new PricingExploiter(logger);
+                const exploiter = new PricingExploiter(logger, context.coverageTracker);
                 const pricingFindings = await exploiter.exploit(businessContext);
                 this.addFindings(pricingFindings);
                 this._log(`Pricing: ${pricingFindings.length} issues`);
@@ -110,7 +112,7 @@ export class LogicAgent extends BaseAgent {
         if (allowActive) {
             this.progress('access', 'Testing access control boundaries...', (completed / totalPhases) * 100);
             try {
-                const tester = new AccessBoundaryTester(logger);
+                const tester = new AccessBoundaryTester(logger, context.coverageTracker);
                 const accessFindings = await tester.test(businessContext, surfaceInventory);
                 this.addFindings(accessFindings);
                 this._log(`Access: ${accessFindings.length} issues`);
@@ -206,7 +208,7 @@ export class LogicAgent extends BaseAgent {
         if (allowActive) {
             this.progress('email-enum', 'Testing for email enumeration...', (completed / totalPhases) * 100);
             try {
-                const tester = new EmailEnumerationTester(logger);
+                const tester = new EmailEnumerationTester(logger, context.coverageTracker);
                 const emailFindings = await tester.test(businessContext, surfaceInventory);
                 this.addFindings(emailFindings);
                 this._log(`Email enumeration: ${emailFindings.length} issues`);
@@ -255,4 +257,3 @@ export class LogicAgent extends BaseAgent {
 }
 
 export default LogicAgent;
-

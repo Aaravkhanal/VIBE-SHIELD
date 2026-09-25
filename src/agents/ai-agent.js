@@ -48,8 +48,9 @@ export class AIAgent extends BaseAgent {
         // Phase 1: Detect AI endpoints
         this.progress('detect', 'Detecting AI-powered endpoints...', 0);
 
-        const detector = new AIEndpointDetector(logger);
+        const detector = new AIEndpointDetector(logger, context.coverageTracker);
         const aiSurfaces = await detector.detect(surfaceInventory);
+        for (const surface of aiSurfaces) context.coverageTracker?.aiSurface(surface);
 
         this._log(`Detected ${aiSurfaces.length} AI surfaces (${aiSurfaces.filter(s => s.confidence === 'confirmed').length} confirmed)`);
         this.progress('detect', `Found ${aiSurfaces.length} AI endpoints`, 10);

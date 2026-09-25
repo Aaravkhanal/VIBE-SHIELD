@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { trackedFetch } from '../../utils/coverage-tracker.js';
 
 /**
  * AuthFlowTester — Tests authentication and session management security.
@@ -13,8 +14,9 @@ import { createFinding } from '../../utils/finding.js';
  * - MFA bypass (response manipulation, OTP reuse)
  */
 export class AuthFlowTester {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
+        this._fetch = (url, options) => trackedFetch(coverageTracker, url, options);
 
         this.COMMON_JWT_SECRETS = [
             'secret', 'password', '123456', 'admin', 'key', 'jwt_secret',
@@ -84,7 +86,7 @@ export class AuthFlowTester {
                 const controller = new AbortController();
                 const timeout = setTimeout(() => controller.abort(), 8000);
 
-                const response = await fetch(url, {
+                const response = await this._fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email: 'test@test.com', password: 'test123' }),
@@ -218,7 +220,7 @@ export class AuthFlowTester {
                     const controller = new AbortController();
                     const timeout = setTimeout(() => controller.abort(), 5000);
 
-                    const response = await fetch(url, {
+                    const response = await this._fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -272,7 +274,7 @@ export class AuthFlowTester {
                 const timeout = setTimeout(() => controller.abort(), 5000);
 
                 // Test with arbitrary token
-                const response = await fetch(url, {
+                const response = await this._fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -332,7 +334,7 @@ export class AuthFlowTester {
                     const controller = new AbortController();
                     const timeout = setTimeout(() => controller.abort(), 5000);
 
-                    const response = await fetch(url, {
+                    const response = await this._fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(bypass),
@@ -382,7 +384,7 @@ export class AuthFlowTester {
                 const controller = new AbortController();
                 const timeout = setTimeout(() => controller.abort(), 5000);
 
-                const response = await fetch(url, {
+                const response = await this._fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email: 'test@test.com', password: 'test' }),

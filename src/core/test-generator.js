@@ -95,6 +95,7 @@ export class TestGenerator {
                 subtype: 'empty_submit',
                 surface: form.page,
                 formId: form.id,
+                formMethod: form.method,
                 title: `Empty form submission blocked: ${form.id}`,
                 steps: [
                     { action: 'navigate', url: form.page },
@@ -116,6 +117,7 @@ export class TestGenerator {
                 subtype: 'valid_submit',
                 surface: form.page,
                 formId: form.id,
+                formMethod: form.method,
                 title: `Valid form submission succeeds: ${form.id}`,
                 steps: [
                     { action: 'navigate', url: form.page },
@@ -141,6 +143,7 @@ export class TestGenerator {
                         subtype: 'invalid_input',
                         surface: form.page,
                         formId: form.id,
+                        formMethod: form.method,
                         fieldName: field.name,
                         title: `Invalid input rejected: ${field.name} in ${form.id}`,
                         steps: [

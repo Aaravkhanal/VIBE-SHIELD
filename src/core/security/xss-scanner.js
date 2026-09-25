@@ -29,11 +29,12 @@ function browserReplayCommand(url, marker) {
  * SAFETY: No destructive payloads — all tests use detection-only markers.
  */
 export class XSSScanner {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
+        this.coverageTracker = coverageTracker;
         this.findings = [];
         this._candidateParams = [];
-        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000 });
+        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000, coverageTracker });
     }
 
     // Fallback guess-list of common reflected-input parameter names. Used to
@@ -258,6 +259,10 @@ export class XSSScanner {
         for (const form of inventory.forms) {
             const page = await context.newPage();
             try {
+                if (this.coverageTracker) {
+                    await page.exposeFunction('__vibeRecordFormSubmit', () => this.coverageTracker.formSubmitted(form));
+                    await page.addInitScript(() => document.addEventListener('submit', () => window.__vibeRecordFormSubmit(), true));
+                }
                 await page.goto(form.page, { waitUntil: 'networkidle', timeout: 15000 });
 
                 // Use a small subset of payloads for each form

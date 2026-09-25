@@ -14,13 +14,13 @@ import { observedWebCvss } from '../../utils/cvss-evidence.js';
  *   3. Time blind    — measure response delay for a sleep payload
  */
 export class SQLiProber {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
         this.findings = [];
         this._candidateParams = [];
         // Budget for expensive time-based probes (each adds ~5s of delay).
         this._timeBudget = 12;
-        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000 });
+        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000, coverageTracker });
     }
 
     // SQL injection test payloads — detection-only, non-destructive

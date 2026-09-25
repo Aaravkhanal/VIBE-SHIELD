@@ -75,7 +75,7 @@ export class QAAgent extends BaseAgent {
             const testCases = generator.generate(surfaceInventory);
             this._log(`Generated ${testCases.length} test cases`);
 
-            const runner = new TestRunner(config, logger);
+            const runner = new TestRunner(config, logger, context.coverageTracker);
             const results = await runner.run(testCases);
             this._testSummary = results.summary;
             this.addFindings(results.findings);

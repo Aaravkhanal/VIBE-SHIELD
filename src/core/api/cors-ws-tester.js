@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { trackedFetch } from '../../utils/coverage-tracker.js';
 
 /**
  * CORSWSTester — Tests CORS policy and WebSocket security.
@@ -15,8 +16,9 @@ import { createFinding } from '../../utils/finding.js';
  * - WS message injection
  */
 export class CORSWSTester {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
+        this._fetch = (url, options) => trackedFetch(coverageTracker, url, options);
 
         this.WS_PATHS = [
             '/ws', '/websocket', '/socket', '/api/ws', '/api/websocket',
@@ -85,7 +87,7 @@ export class CORSWSTester {
     async _testOriginReflection(url, findings) {
         try {
             const evilOrigin = 'https://evil-attacker.com';
-            const response = await fetch(url, {
+            const response = await this._fetch(url, {
                 method: 'GET',
                 headers: { 'Origin': evilOrigin },
                 signal: AbortSignal.timeout(5000),
@@ -122,7 +124,7 @@ export class CORSWSTester {
 
     async _testNullOrigin(url, findings) {
         try {
-            const response = await fetch(url, {
+            const response = await this._fetch(url, {
                 method: 'GET',
                 headers: { 'Origin': 'null' },
                 signal: AbortSignal.timeout(5000),
@@ -147,7 +149,7 @@ export class CORSWSTester {
 
     async _testWildcardCredentials(url, findings) {
         try {
-            const response = await fetch(url, {
+            const response = await this._fetch(url, {
                 method: 'GET',
                 headers: { 'Origin': 'https://test.com' },
                 signal: AbortSignal.timeout(5000),
@@ -185,7 +187,7 @@ export class CORSWSTester {
 
                 // Test if WS endpoint exists via HTTP upgrade
                 const httpUrl = wsUrl.replace(/^ws/, 'http');
-                const response = await fetch(httpUrl, {
+                const response = await this._fetch(httpUrl, {
                     method: 'GET',
                     headers: {
                         'Upgrade': 'websocket',
@@ -219,7 +221,7 @@ export class CORSWSTester {
                 if (response.status === 426 || (response.status === 400 &&
                     (response.headers.get('upgrade') || '').toLowerCase().includes('websocket'))) {
                     // WS endpoint exists — check if it requires auth
-                    const authResponse = await fetch(httpUrl, {
+                    const authResponse = await this._fetch(httpUrl, {
                         method: 'GET',
                         headers: {
                             'Upgrade': 'websocket',

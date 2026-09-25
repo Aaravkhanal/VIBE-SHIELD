@@ -9,6 +9,7 @@ import { ReportGenerator } from '../src/reporting/report-generator.js';
 import { calculateSecurityScore, generateSvgBadge } from '../src/utils/security-score.js';
 import { completeScan, applyScanEvent, validateScanRequest } from '../src/utils/scan-state.js';
 import { Orchestrator } from '../src/agents/orchestrator.js';
+import { CrawlAgent } from '../src/agents/crawl-agent.js';
 import { BaseAgent } from '../src/agents/base-agent.js';
 import { createFinding, normalizeVerification, verificationSummary } from '../src/utils/finding.js';
 import { domainMetadata, organizationScopes } from '../src/utils/domain-scope.js';
@@ -18,8 +19,9 @@ import { DifferentialEngine } from '../src/core/differential-engine.js';
 import { calculateCvss, parseCvssVector } from '../src/utils/cvss-calculator.js';
 import { observedWebCvss } from '../src/utils/cvss-evidence.js';
 import { generateSARIF } from '../src/reporting/sarif-generator.js';
+import { CoverageTracker } from '../src/utils/coverage-tracker.js';
 
-const report = (target = 'http://fixture.test/') => ({ meta: { target, modules: ['security'], scannedAt: new Date().toISOString() }, coverage: { status: 'complete' }, agents: {}, surfaceInventory: { totalPages: 1 }, summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0, info: 0 }, findings: [] });
+const report = (target = 'http://fixture.test/') => ({ meta: { target, modules: ['security'], scannedAt: new Date().toISOString() }, coverage: { status: 'complete', manifest: { measured: true, percent: 100, pages: { discovered: 1, scanned: 1 } } }, agents: {}, surfaceInventory: { totalPages: 1 }, summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0, info: 0 }, findings: [] });
 const scan = (scanId = 'test') => ({ scanId, url: 'http://fixture.test/', startTime: Date.now(), agents: { 'VIBE-SHIELD-SEC': { status: 'pending' } }, terminalLogs: [] });
 function temp(t) { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vibe-regression-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; }
 
@@ -41,6 +43,7 @@ test('scan completion never reuses another scan report', t => {
 test('matching reports load by exact scan ID and preserve zero scores', t => {
     const root = temp(t); fs.mkdirSync(path.join(root, 'test'));
     const data = report(); data.summary.critical = 4;
+    data.findings = Array.from({ length: 4 }, () => ({ severity: 'critical', verification: { level: 'confirmed' } }));
     fs.writeFileSync(path.join(root, 'test/report.json'), JSON.stringify(data));
     const state = scan(); const score = completeScan(state, 0, root);
     assert.equal(state.status, 'completed'); assert.equal(score.overallScore, 0);
@@ -62,6 +65,78 @@ test('score does not invent grades or untested category scores', () => {
     assert.equal(calculateSecurityScore({ findings: [] }).overallScore, null);
     assert.equal(calculateSecurityScore(report()).subCategories.aiSafety.score, null);
     assert.doesNotMatch(generateSvgBadge('<script>', 50, 'red" onload="alert(1)'), /<script>|onload=/);
+});
+
+test('coverage manifest counts exercised surfaces and explains blocked work', () => {
+    const tracker = new CoverageTracker('https://fixture.test/');
+    const inventory = {
+        pages: [
+            { url: 'https://fixture.test/?q=one', status: 200, links: ['https://fixture.test/hidden'], roles: ['anonymous'] },
+            { url: 'https://fixture.test/private', status: 401, links: [], roles: ['member'] },
+        ],
+        apiEndpoints: [{ url: 'https://fixture.test/api/items?id=1', method: 'GET' }],
+        forms: [{ id: 'login', page: 'https://fixture.test/', action: 'https://fixture.test/login', method: 'POST', fields: [{ name: 'email' }] }],
+        roles: ['anonymous', 'member'],
+    };
+    tracker.seedInventory(inventory);
+    tracker.apiTested('https://fixture.test/api/items?id=1', 'GET', 200);
+    tracker.formSubmitted(inventory.forms[0]);
+    tracker.mutation({ url: 'https://fixture.test/?q=one' }, { url: 'https://fixture.test/?q=payload' });
+    tracker.aiSurface({ url: 'https://fixture.test/api/ai', method: 'POST', confidence: 'confirmed' });
+    tracker.aiSurface({ url: 'https://fixture.test/chat', method: 'GET', confidence: 'medium' });
+    tracker.response('https://fixture.test/api/items', 429);
+    tracker.response('https://fixture.test/admin', 403, {}, 'Access denied by web application firewall');
+    tracker.response('https://fixture.test/challenge', 403, {}, 'Please complete the CAPTCHA');
+    const manifest = tracker.manifest({
+        'VIBE-SHIELD-CRAWL': { status: 'done' },
+        'VIBE-SHIELD-API': { status: 'done', assessment: 'not_assessed' },
+        'VIBE-SHIELD-SEC': { status: 'done', skippedChecks: [{ label: 'SQLi', reason: 'passive mode' }] },
+        'VIBE-SHIELD-LOGIC': { status: 'skipped' },
+        'VIBE-SHIELD-QA': { status: 'partial', errors: ['test failed'] },
+    }, inventory);
+    assert.deepEqual(manifest.pages, { discovered: 3, scanned: 1 });
+    assert.deepEqual(manifest.apiEndpoints, { discovered: 1, tested: 1 });
+    assert.deepEqual(manifest.forms, { discovered: 1, submitted: 1 });
+    assert.deepEqual(manifest.parameters, { discovered: 3, eligible: 3, mutated: 1 });
+    assert.deepEqual(manifest.moduleCounts, { completed: 1, partial: 1, skipped: 1, failed: 1, unsupported: 1 });
+    assert.deepEqual(manifest.aiEndpoints, { confirmed: 1, suspected: 1 });
+    assert.deepEqual(manifest.userRolesTested, ['anonymous', 'member']);
+    assert.deepEqual(new Set(manifest.blockedTests.map(item => item.reason)), new Set(['missing_credentials', 'rate_limit', 'waf', 'captcha']));
+});
+
+test('authenticated crawl keeps a successful route when anonymous access was denied', () => {
+    const unauth = { baseUrl: 'https://fixture.test/', pages: [{ url: 'https://fixture.test/dashboard', status: 401 }], apiEndpoints: [], forms: [] };
+    const member = { pages: [{ url: 'https://fixture.test/dashboard', status: 200, title: 'Dashboard' }], apiEndpoints: [], forms: [] };
+    const inventory = new CrawlAgent()._mergeInventories(unauth, new Map([['member', member]]));
+    assert.equal(inventory.pages[0].status, 200);
+    assert.equal(inventory.pages[0].unauthenticatedStatus, 401);
+    assert.deepEqual(inventory.pages[0].authenticatedRolesReached, ['member']);
+    assert.equal(new CoverageTracker('https://fixture.test/').manifest({}, inventory).authenticatedRoutesReached, 1);
+});
+
+test('ten percent coverage cannot receive an A even with no findings', () => {
+    const data = report();
+    data.summary = { total: 0, critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+    data.coverage.manifest.percent = 10;
+    const result = calculateSecurityScore(data);
+    assert.equal(result.riskScore, 100);
+    assert.equal(result.overallScore, 46);
+    assert.equal(result.grade, 'F');
+    assert.equal(calculateSecurityScore({ ...data, coverage: { status: 'complete' } }).overallScore, null);
+});
+
+test('score discounts unverified findings relative to confirmed impact', () => {
+    const data = report();
+    data.summary = { total: 1, critical: 1, high: 0, medium: 0, low: 0, info: 0 };
+    data.findings = [{ severity: 'critical', verification: { level: 'potential' } }];
+    const potential = calculateSecurityScore(data);
+    data.findings = [{ severity: 'critical', verification: { level: 'confirmed' } }];
+    const confirmed = calculateSecurityScore(data);
+    assert.ok(potential.riskScore > confirmed.riskScore);
+    assert.equal(confirmed.riskScore, 75);
+    data.findings = [];
+    data.scoringFindings = [{ module: 'security', severity: 'critical', verification: { level: 'confirmed' } }];
+    assert.equal(calculateSecurityScore(data).riskScore, 75, 'report display thresholds must not hide findings from grading');
 });
 
 test('structured progress tracks errors, skips, and findings', () => {
@@ -144,15 +219,19 @@ test('all report formats use deduplicated counts, escaped target and coverage', 
     const root = temp(t);
     const finding = { id: 'one', severity: 'high', title: 'XSS', description: 'test', module: 'security', affected_surface: '/', reproduction: ['first', 'second'] };
     const generator = new ReportGenerator({ target_url: 'https://fixture.test/<script>alert(1)</script>' });
-    await generator.generate({ findings: [finding, { ...finding, id: 'two' }], deduplicated: [finding], agents: { security: { status: 'partial' } }, outputDir: root, modules: ['security'], surfaceInventory: { totalPages: 1, pages: [{ url: '/', status: 200 }] } });
+    const coverageManifest = { measured: true, percent: 50, denominator: 'Recorded requests', pages: { discovered: 2, scanned: 1 }, apiEndpoints: { discovered: 0, tested: 0 }, forms: { discovered: 0, submitted: 0 }, parameters: { discovered: 0, mutated: 0 }, authenticatedRoutesReached: 0, userRolesTested: ['anonymous'], aiEndpoints: { confirmed: 0, suspected: 0 }, moduleCounts: { completed: 0, skipped: 0, failed: 1, unsupported: 0 }, modules: {}, blockedTests: [] };
+    await generator.generate({ findings: [finding, { ...finding, id: 'two' }], deduplicated: [finding], agents: { security: { status: 'partial' } }, outputDir: root, modules: ['security'], surfaceInventory: { totalPages: 1, pages: [{ url: '/', status: 200 }] }, coverageManifest });
     const html = fs.readFileSync(path.join(root, 'report.html'), 'utf8');
     assert.match(html, /Findings \(1\)/); assert.match(html, /Coverage: incomplete/);
     assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
     assert.match(html, /first\nsecond/);
     assert.match(html, /Verification Confidence/);
+    assert.match(html, /Measured coverage:<\/strong> 50%/);
     const json = JSON.parse(fs.readFileSync(path.join(root, 'report.json'), 'utf8'));
     assert.equal(json.findings[0].verification.level, 'potential');
     assert.equal(json.verificationSummary.potential, 1);
+    assert.equal(json.coverage.manifest.pages.scanned, 1);
+    assert.match(fs.readFileSync(path.join(root, 'report.md'), 'utf8'), /\| Pages \| 2 \| 1 \|/);
     const sarif = JSON.parse(fs.readFileSync(path.join(root, 'report.sarif'), 'utf8'));
     assert.equal(sarif.runs[0].results[0].properties.verificationLevel, 'potential');
     assert.equal(sarif.runs[0].tool.driver.rules[0].properties['security-severity'], undefined);

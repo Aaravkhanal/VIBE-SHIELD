@@ -414,12 +414,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (scoreGradeText) scoreGradeText.textContent = scoreData.grade;
         if (scoreNumberText) scoreNumberText.textContent = scoreData.overallScore == null ? 'Not scored' : `${scoreData.overallScore}/100`;
         if (scoreStatusText) scoreStatusText.textContent = scoreData.statusText;
-        if (scoreSummaryDesc) scoreSummaryDesc.textContent = report.coverage?.note || 'Scores describe tested surfaces only.';
+        if (scoreSummaryDesc) scoreSummaryDesc.textContent = `${scoreData.coveragePercent == null ? 'Coverage not measured' : `${scoreData.coveragePercent}% measured coverage`}. ${report.coverage?.note || 'Scores describe tested surfaces only.'}`;
 
         // Animate the SVG ring
         if (scoreRingArc) {
             const circumference = 2 * Math.PI * 34; // r=34
-            const offset = circumference - (scoreData.overallScore / 100) * circumference;
+            const offset = circumference - ((scoreData.overallScore ?? 0) / 100) * circumference;
             scoreRingArc.style.strokeDashoffset = offset;
             // Color based on grade
             const color = scoreData.overallScore >= 80 ? '#16a34a' : scoreData.overallScore >= 60 ? '#d97706' : '#dc2626';

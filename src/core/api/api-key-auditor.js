@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { trackedFetch } from '../../utils/coverage-tracker.js';
 
 /**
  * APIKeyAuditor — Tests API key management and authentication hygiene.
@@ -11,8 +12,9 @@ import { createFinding } from '../../utils/finding.js';
  * - API versioning issues
  */
 export class APIKeyAuditor {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
+        this._fetch = (url, options) => trackedFetch(coverageTracker, url, options);
 
         this.KEY_PARAM_NAMES = [
             'api_key', 'apikey', 'key', 'token', 'access_token',
@@ -101,7 +103,7 @@ export class APIKeyAuditor {
         for (const page of pages) {
             const url = page.url || page;
             try {
-                const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+                const response = await this._fetch(url, { signal: AbortSignal.timeout(5000) });
                 if (!response.ok) continue;
 
                 const html = await response.text();
@@ -149,7 +151,7 @@ export class APIKeyAuditor {
         for (const path of this.PROTECTED_ENDPOINTS) {
             try {
                 const url = new URL(path, baseUrl).href;
-                const response = await fetch(url, {
+                const response = await this._fetch(url, {
                     method: 'GET',
                     signal: AbortSignal.timeout(5000),
                     // Deliberately no auth headers
@@ -206,7 +208,7 @@ export class APIKeyAuditor {
 
                 // Fire 20 rapid login attempts
                 const attempts = Array.from({ length: 20 }, () =>
-                    fetch(url, {
+                    this._fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ email: 'test@test.com', password: 'wrong' }),

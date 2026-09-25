@@ -1,4 +1,5 @@
 import { createFinding } from '../../utils/finding.js';
+import { trackedFetch } from '../../utils/coverage-tracker.js';
 
 /**
  * OAuthProber — Tests OAuth/SSO flow security.
@@ -12,8 +13,9 @@ import { createFinding } from '../../utils/finding.js';
  * - Deprecated implicit flow detection
  */
 export class OAuthProber {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
+        this._fetch = (url, options) => trackedFetch(coverageTracker, url, options);
 
         this.OAUTH_ENDPOINTS = [
             '/oauth/authorize', '/auth/authorize', '/oauth2/authorize',
@@ -66,7 +68,7 @@ export class OAuthProber {
         // Step 1: Fingerprint the homepage to detect SPA catch-all
         let homeFingerprint = null;
         try {
-            const homeResp = await fetch(baseUrl, {
+            const homeResp = await this._fetch(baseUrl, {
                 redirect: 'follow',
                 signal: AbortSignal.timeout(5000),
             });
@@ -81,7 +83,7 @@ export class OAuthProber {
         for (const path of this.OAUTH_ENDPOINTS) {
             try {
                 const url = new URL(path, baseUrl).href;
-                const response = await fetch(url, {
+                const response = await this._fetch(url, {
                     method: 'GET',
                     redirect: 'manual',
                     signal: AbortSignal.timeout(5000),
@@ -137,7 +139,7 @@ export class OAuthProber {
                 url.searchParams.set('response_type', 'code');
                 // Deliberately omit 'state' parameter
 
-                const response = await fetch(url.href, {
+                const response = await this._fetch(url.href, {
                     redirect: 'manual',
                     signal: AbortSignal.timeout(5000),
                 });
@@ -200,7 +202,7 @@ export class OAuthProber {
                     url.searchParams.set('client_id', 'test');
                     url.searchParams.set('response_type', 'code');
 
-                    const response = await fetch(url.href, {
+                    const response = await this._fetch(url.href, {
                         redirect: 'manual',
                         signal: AbortSignal.timeout(5000),
                     });
@@ -257,7 +259,7 @@ export class OAuthProber {
                 // Test if callback accepts token in query string (should be fragment)
                 const testUrl = `${url}?code=test_auth_code&state=test_state`;
 
-                const response = await fetch(testUrl, {
+                const response = await this._fetch(testUrl, {
                     redirect: 'manual',
                     signal: AbortSignal.timeout(5000),
                 });
@@ -290,7 +292,7 @@ export class OAuthProber {
 
         try {
             const url = new URL('/.well-known/openid-configuration', baseUrl).href;
-            const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+            const response = await this._fetch(url, { signal: AbortSignal.timeout(5000) });
 
             if (response.ok) {
                 const config = await response.json();

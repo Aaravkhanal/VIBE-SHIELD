@@ -41,7 +41,7 @@ export class APIAgent extends BaseAgent {
         // Phase 1: Auth flow testing
         this.progress('auth', 'Testing authentication flows...', 0);
         try {
-            const authTester = new AuthFlowTester(logger);
+            const authTester = new AuthFlowTester(logger, context.coverageTracker);
             const authFindings = await authTester.test(surfaceInventory);
             this.addFindings(authFindings);
             this._log(`Auth flows: ${authFindings.length} issues`);
@@ -53,7 +53,7 @@ export class APIAgent extends BaseAgent {
         // Phase 2: OAuth probing
         this.progress('oauth', 'Probing OAuth/SSO flows...', 20);
         try {
-            const oauthProber = new OAuthProber(logger);
+            const oauthProber = new OAuthProber(logger, context.coverageTracker);
             const oauthFindings = await oauthProber.probe(surfaceInventory);
             this.addFindings(oauthFindings);
             this._log(`OAuth: ${oauthFindings.length} issues`);
@@ -65,7 +65,7 @@ export class APIAgent extends BaseAgent {
         // Phase 3: API key audit
         this.progress('apikeys', 'Auditing API key management...', 40);
         try {
-            const keyAuditor = new APIKeyAuditor(logger);
+            const keyAuditor = new APIKeyAuditor(logger, context.coverageTracker);
             const keyFindings = await keyAuditor.audit(surfaceInventory);
             this.addFindings(keyFindings);
             this._log(`API keys: ${keyFindings.length} issues`);
@@ -77,7 +77,7 @@ export class APIAgent extends BaseAgent {
         // Phase 4: GraphQL testing
         this.progress('graphql', 'Testing GraphQL endpoints...', 60);
         try {
-            const gqlTester = new GraphQLTester(logger);
+            const gqlTester = new GraphQLTester(logger, context.coverageTracker);
             const gqlFindings = await gqlTester.test(surfaceInventory);
             this.addFindings(gqlFindings);
             this._log(`GraphQL: ${gqlFindings.length} issues`);
@@ -89,7 +89,7 @@ export class APIAgent extends BaseAgent {
         // Phase 5: CORS & WebSocket testing
         this.progress('cors-ws', 'Testing CORS and WebSocket security...', 80);
         try {
-            const corsTester = new CORSWSTester(logger);
+            const corsTester = new CORSWSTester(logger, context.coverageTracker);
             const corsFindings = await corsTester.test(surfaceInventory);
             this.addFindings(corsFindings);
             this._log(`CORS/WS: ${corsFindings.length} issues`);

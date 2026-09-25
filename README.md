@@ -709,6 +709,10 @@ This engine powers SQL injection, XSS, authorization boundary checks, open redir
 
 CVSS is calculated only when a detector supplies all eight base metrics and an evidence reason for each selection. The score, vector, metric reasons, and verification level appear together in JSON, Markdown, HTML, and SARIF. A potential finding with detector metrics is labeled **provisional**; informational observations and findings without demonstrated impact show **CVSS not assessed**. Severity remains a separate triage label and never supplies missing CVSS values. The dashboard calculator is a manual preview and does not overwrite detector evidence.
 
+### Measured scan coverage and grade
+
+Every report includes a coverage manifest with discovered versus exercised pages, API endpoints, forms, and parameters; authenticated routes and roles reached; module outcomes; blocked requests (rate limits, WAFs, CAPTCHAs, missing credentials); and confirmed versus suspected AI endpoints. Counts come from observed requests, browser submissions, and controlled mutations. When there is no coverage manifest, the grade is unavailable. Otherwise finding severity is weighted by verification confidence, and the final score is capped by measured coverage: a scan with 10% coverage can score at most 46/100. The denominator is limited to discovered in-scope surfaces and selected modules; undiscovered parts of a site remain outside the measurement.
+
 Every scan generates the following report formats, saved to `vibe-shield-reports/<timestamp>/`:
 
 | Format | File | Description |

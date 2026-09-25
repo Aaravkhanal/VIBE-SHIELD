@@ -36,7 +36,7 @@ export class ReportGenerator {
   /**
    * Generate all reports from findings and test results.
    */
-  async generate({ agents, findings, deduplicated, dedupStats, correlations, testSummary, surfaceInventory, outputDir, modules }) {
+  async generate({ agents, findings, deduplicated, dedupStats, correlations, testSummary, surfaceInventory, coverageManifest, outputDir, modules }) {
     const reportDir = outputDir || path.join(process.cwd(), 'vibe-shield-reports', this._timestamp());
     if (!fs.existsSync(reportDir)) {
       fs.mkdirSync(reportDir, { recursive: true });
@@ -74,6 +74,7 @@ export class ReportGenerator {
       agents: agents || {},
       coverage: {
         status: !agents || Object.values(agents).some(a => a.status !== 'done') || (surfaceInventory?.pages || []).some(p => typeof p.status !== 'number' || p.status >= 400) ? 'incomplete' : 'complete',
+        manifest: coverageManifest || null,
         safetyMode: this.config.safety_mode || 'safe-active',
         dependencyAudit: this.config.project_root ? 'Target source directory configured' : 'Not assessed: no target source directory',
         note: 'Automated findings reflect the tested surfaces and selected modules. Zero findings do not establish that a website is vulnerability-free.',
@@ -92,6 +93,9 @@ export class ReportGenerator {
       },
       findings: reportFindings,
       rawFindings: filteredFindings,
+      scoringFindings: sortFindings((deduplicated || findings || []).map(withVerification)).map(item => ({
+        module: item.module, severity: item.severity, verification: { level: item.verification.level },
+      })),
     };
 
     // Optional, additive LLM augmentation (remediation + executive summary).
@@ -213,7 +217,18 @@ export class ReportGenerator {
     md += `|---------|-------|\n`;
     md += `| Pages Crawled | ${surfaceInventory.totalPages} |\n`;
     md += `| API Endpoints | ${surfaceInventory.totalApis} |\n`;
-    md += `| Forms Tested | ${surfaceInventory.totalForms} |\n\n`;
+    md += `| Forms Discovered | ${surfaceInventory.totalForms} |\n\n`;
+    const manifest = data.coverage?.manifest;
+    if (manifest) {
+      md += `**Measured coverage:** ${manifest.percent == null ? 'Not measured' : `${manifest.percent}%`} — ${manifest.denominator}\n\n`;
+      md += `| Surface | Discovered | Exercised |\n|---------|-----------:|----------:|\n`;
+      for (const [label, key, tested] of [['Pages', 'pages', 'scanned'], ['API endpoints', 'apiEndpoints', 'tested'], ['Forms', 'forms', 'submitted'], ['Parameters', 'parameters', 'mutated']]) {
+        md += `| ${label} | ${manifest[key]?.discovered ?? 0} | ${manifest[key]?.[tested] ?? 0} |\n`;
+      }
+      md += `\n**Authenticated routes reached:** ${manifest.authenticatedRoutesReached}  \n**Roles tested:** ${manifest.userRolesTested?.join(', ') || 'None'}  \n**AI endpoints:** ${manifest.aiEndpoints?.confirmed || 0} confirmed, ${manifest.aiEndpoints?.suspected || 0} suspected\n\n`;
+      md += `| Module | Status | Skipped checks |\n|--------|--------|----------------|\n${Object.entries(manifest.modules || {}).map(([name, module]) => `| ${name} | ${module.status} | ${(module.skippedChecks || []).map(check => check.label).join(', ') || 'None'} |`).join('\n')}\n\n`;
+      if (manifest.blockedTests?.length) md += `**Blocked tests:**\n${manifest.blockedTests.map(block => `- ${block.reason}: ${block.url} (${block.detail})`).join('\n')}\n\n`;
+    }
 
     md += `---\n\n`;
     md += `## Findings\n\n`;
@@ -287,6 +302,7 @@ export class ReportGenerator {
       info: '#90a4ae',
     };
     const confidence = data.verificationSummary || verificationSummary(findings);
+    const manifest = data.coverage?.manifest;
 
     return `<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -440,7 +456,16 @@ export class ReportGenerator {
   </div>
 
   <h2>Module coverage</h2>
-  <ul>${Object.entries(data.agents || {}).map(([name, agent]) => `<li><strong>${this._escapeHtml(name)}:</strong> ${this._escapeHtml(agent.assessment === 'not_assessed' ? 'Not assessed' : agent.status)}${(agent.errors || []).map(error => `<p>${this._escapeHtml(error)}</p>`).join('')}</li>`).join('')}</ul>
+  ${manifest ? `<p><strong>Measured coverage:</strong> ${manifest.percent == null ? 'Not measured' : `${manifest.percent}%`}. ${this._escapeHtml(manifest.denominator)}</p>
+  <div class="summary-grid">
+    ${[['Pages', 'pages', 'scanned'], ['API endpoints', 'apiEndpoints', 'tested'], ['Forms', 'forms', 'submitted'], ['Parameters', 'parameters', 'mutated']].map(([label, key, tested]) => `<div class="summary-card"><div class="count">${manifest[key]?.[tested] ?? 0}/${manifest[key]?.discovered ?? 0}</div><div class="label">${label} exercised</div></div>`).join('')}
+    <div class="summary-card"><div class="count">${manifest.authenticatedRoutesReached ?? 0}</div><div class="label">Authenticated routes reached</div></div>
+    <div class="summary-card"><div class="count">${manifest.aiEndpoints?.confirmed ?? 0}/${(manifest.aiEndpoints?.confirmed ?? 0) + (manifest.aiEndpoints?.suspected ?? 0)}</div><div class="label">AI endpoints confirmed</div></div>
+  </div>
+  <p><strong>Roles tested:</strong> ${this._escapeHtml(manifest.userRolesTested?.join(', ') || 'None')}</p>
+  <p><strong>Module outcomes:</strong> ${Object.entries(manifest.moduleCounts || {}).map(([key, count]) => `${this._escapeHtml(key)} ${count}`).join(' · ')}</p>
+  ${manifest.blockedTests?.length ? `<h3>Blocked tests</h3><ul>${manifest.blockedTests.map(block => `<li>${this._escapeHtml(block.reason)}: ${this._escapeHtml(block.url)} (${this._escapeHtml(block.detail)})</li>`).join('')}</ul>` : ''}` : '<p>Coverage measurements were not recorded for this scan.</p>'}
+  <ul>${Object.entries(manifest?.modules || data.agents || {}).map(([name, agent]) => `<li><strong>${this._escapeHtml(name)}:</strong> ${this._escapeHtml(agent.status)}${(agent.skippedChecks || []).map(check => `<p>Skipped ${this._escapeHtml(check.label)}: ${this._escapeHtml(check.reason)}</p>`).join('')}${(agent.errors || []).map(error => `<p>${this._escapeHtml(error)}</p>`).join('')}</li>`).join('')}</ul>
   <p>Safety mode: ${this._escapeHtml(data.coverage?.safetyMode || 'Unknown')}. Dependency audit: ${this._escapeHtml(data.coverage?.dependencyAudit || 'Not assessed')}.</p>
   <h2>Findings (${summary.total})</h2>
   ${findings.length === 0 ? '<p>No findings at the configured threshold. Review coverage and scan errors before drawing conclusions.</p>' : ''}

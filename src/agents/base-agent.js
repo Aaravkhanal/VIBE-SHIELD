@@ -19,6 +19,7 @@ export class BaseAgent {
         this._endTime = null;
         this._findings = [];
         this.errors = [];
+        this.skippedChecks = [];
         this.assessment = 'assessed';
         this._eventBus = null;
         this._logger = null;
@@ -147,6 +148,10 @@ export class BaseAgent {
             message,
             progress: percent,
         });
+    }
+
+    skipCheck(label, reason) {
+        this.skippedChecks.push({ label, reason });
     }
 
     /**

@@ -13,9 +13,9 @@ import { DifferentialEngine } from '../differential-engine.js';
  * - Direct object reference enumeration
  */
 export class AccessBoundaryTester {
-    constructor(logger) {
+    constructor(logger, coverageTracker = null) {
         this.logger = logger;
-        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000 });
+        this.differential = new DifferentialEngine({ logger, timeoutMs: 10000, coverageTracker });
 
         // Common ID parameter names
         this.ID_PARAMS = ['id', 'user_id', 'userId', 'uid', 'account_id', 'accountId',

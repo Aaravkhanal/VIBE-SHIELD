@@ -27,11 +27,14 @@ export class CrawlAgent extends BaseAgent {
         // Auth manager is pre-initialized by the CLI
         const authManager = config._authManager || null;
         context.authManager = authManager;
+        if (authManager?.loginFormInfo && !authManager.isAuthenticated) {
+            context.coverageTracker?.blockedTest('missing_credentials', authManager.loginFormInfo.url || config.target_url, 'Login form detected but no authenticated session was available');
+        }
 
         // ═══ Phase 1: Unauthenticated Crawl ═══
         this.progress('crawl', 'Starting unauthenticated crawl...', 10);
 
-        const unauthCrawler = new Crawler(config, logger);
+        const unauthCrawler = new Crawler(config, logger, context.coverageTracker);
         const unauthInventory = await unauthCrawler.crawl(config.target_url);
 
         // ═══ Phase 2: Authenticated Crawls (one per role) ═══
@@ -53,7 +56,7 @@ export class CrawlAgent extends BaseAgent {
                     // otherwise fall back to the target URL
                     const startUrl = postLoginUrl || config.target_url;
 
-                    const authCrawler = new Crawler(config, logger);
+                    const authCrawler = new Crawler(config, logger, context.coverageTracker);
                     const authInv = await authCrawler.crawl(startUrl, authState, seedLinks);
 
                     authInventories.set(role, authInv);
@@ -66,6 +69,7 @@ export class CrawlAgent extends BaseAgent {
 
         // ═══ Phase 3: Merge Inventories ═══
         const mergedInventory = this._mergeInventories(unauthInventory, authInventories);
+        context.coverageTracker?.seedInventory(mergedInventory);
 
         // Store inventory in shared context for downstream agents
         context.surfaceInventory = mergedInventory;
@@ -107,13 +111,19 @@ export class CrawlAgent extends BaseAgent {
         const addPages = (pages, role = null) => {
             for (const page of pages) {
                 const key = page.url;
+                const reachedAsRole = role && Number.isInteger(page.status) && page.status >= 200 && page.status < 400;
                 if (!pageMap.has(key)) {
-                    pageMap.set(key, { ...page, roles: role ? [role] : ['anonymous'] });
+                    pageMap.set(key, { ...page, roles: role ? [role] : ['anonymous'], authenticatedRolesReached: reachedAsRole ? [role] : [] });
                 } else {
                     const existing = pageMap.get(key);
+                    if (reachedAsRole && !(Number.isInteger(existing.status) && existing.status >= 200 && existing.status < 400)) {
+                        const priorStatus = existing.status;
+                        Object.assign(existing, page, { unauthenticatedStatus: priorStatus });
+                    }
                     if (role && !existing.roles.includes(role)) {
                         existing.roles.push(role);
                     }
+                    if (reachedAsRole && !existing.authenticatedRolesReached.includes(role)) existing.authenticatedRolesReached.push(role);
                 }
             }
         };
